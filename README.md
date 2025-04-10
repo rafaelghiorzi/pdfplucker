@@ -171,13 +171,6 @@ If you encounter issues not covered here, please open an issue on GitHub with:
 - The error message
 - Your system specifications (OS, Python version, etc.)
 
-## Version History
-
-- **0.1.5**: Initial test
-- **0.1.6**: Correct JSON formatting
-- **0.1.7**: Fixing modules versions and import
-- **0.2.0**: Formatting terminal outputs
-
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pdfplucker"
-version = "0.2.0"
+version = "0.2.1"
 description = "Docling wrapper for PDF parsing"
 authors = ["rafaelghiorzi <rafael.ghiorzi@gmail.com>"]
 readme = "README.md"
@@ -16,4 +16,4 @@ docling = "^2.28.4"
 PyMuPDF = "^1.25.5"
 
 [tool.poetry.scripts]
-pdfplucker = "pdfplucker.cli:main"
+pdfplucker = "src.cli:main"

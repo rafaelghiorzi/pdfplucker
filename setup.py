@@ -11,7 +11,7 @@ with open("requirements.txt", encoding="utf-8") as f:
 
 setup(
     name="pdfplucker",
-    version="0.2.0",
+    version="0.2.1",
     description="Docling wrapper for PDF parsing",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -20,7 +20,7 @@ setup(
     url="https://github.com/rafaelghiorzi/pdfplucker",
     packages=find_packages(),
     install_requires=requirements,
-    python_requires=">=3.7",
+    python_requires=">=3.9",
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
