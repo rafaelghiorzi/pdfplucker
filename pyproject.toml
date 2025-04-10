@@ -9,6 +9,9 @@ description = "Docling wrapper for PDF parsing"
 authors = ["rafaelghiorzi <rafael.ghiorzi@gmail.com>"]
 readme = "README.md"
 repository = "https://github.com/rafaelghiorzi/pdfplucker"
+packages = [
+    { include = "src", from = "." }
+]
 
 [tool.poetry.dependencies]
 python = ">=3.9,<4.0"
