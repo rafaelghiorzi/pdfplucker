@@ -4,14 +4,14 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pdf-parser"
-version = "0.1.4"
+version = "0.1.5"
 description = "Extrator e processador de documentos PDF utilizando Docling"
 authors = ["rafaelghiorzi <rafael.ghiorzi@gmail.com>"]
 readme = "README.md"
 repository = "https://github.com/rafaelghiorzi/pdf-parser"
 
 [tool.poetry.dependencies]
-python = ">=3.7"
+python = ">=3.9,<4.0"
 docling = "^2.28.4"
 PyMuPDF = "^1.25.5"
 
