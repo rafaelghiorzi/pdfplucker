@@ -1,9 +1,7 @@
 # utils.py
 
 # Módulos padrões
-import time
 from pathlib import Path
-from datetime import timedelta
 
 def ensure_path(path, is_file=False):
     """

@@ -4,8 +4,8 @@ from pathlib import Path
 import time
 import json
 
-from processor import process_batch, create_converter, process_pdf
-from utils import ensure_path
+from pdfplucker.processor import process_batch, create_converter, process_pdf
+from pdfplucker.utils import ensure_path
 
 def create_parser():
     """

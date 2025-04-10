@@ -1,5 +1,3 @@
-# Processor.py
-
 # Módulos padrões
 import os
 import json
@@ -26,8 +24,6 @@ from docling_core.types.doc import (
 )
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import ConversionResult
-
-os.environ['TORCH_CUDA_ARCH_LIST'] = "7.5"
 
 # Função principal para extração das informações
 def processar_documento(conv: ConversionResult, dados: dict, nome_arquivo, caminho_imagens):
