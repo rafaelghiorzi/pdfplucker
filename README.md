@@ -1,4 +1,4 @@
-# PDF Processor
+# pdfplucker
 
 Uma ferramenta completa para extração e processamento de documentos PDF.
 

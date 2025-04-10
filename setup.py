@@ -10,14 +10,14 @@ with open("requirements.txt", encoding="utf-8") as f:
     requirements = f.read().strip().split("\n")
 
 setup(
-    name="pdf_parser",
-    version="0.1.1",
+    name="pdfplucker",
+    version="0.1.6",
     description="Extrator e processador de documentos PDF utilizando Docling",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Rafael Dias Ghiorzi",
+    author="rafaelghiorzi",
     author_email="rafael.ghiorzi@gmail.com",
-    url="https://github.com/rafaelghiorzi/pdf_parser",
+    url="https://github.com/rafaelghiorzi/pdfplucker",
     packages=find_packages(),
     install_requires=requirements,
     python_requires=">=3.7",
@@ -25,7 +25,7 @@ setup(
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
         "Intended Audience :: Science/Research",
-        "Natural Language :: Portuguese (Brazilian)",
+        "Natural Language :: Portuguese (Brazilian)"
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
@@ -37,7 +37,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "pdf-processor=pdf_parser.cli:main",
+            "pdfplucker=pdfplucker.cli:main",
         ],
     },
 )
