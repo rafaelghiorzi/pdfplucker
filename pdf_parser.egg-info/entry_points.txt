@@ -1,2 +1,2 @@
 [console_scripts]
-pdf-processor = pdf_processor.cli:main
+pdf-processor = pdf_parser.cli:main

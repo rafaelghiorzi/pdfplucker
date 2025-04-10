@@ -2,7 +2,7 @@ Metadata-Version: 2.1
 Name: pdf-parser
 Version: 0.1.1
 Summary: Extrator e processador de documentos PDF utilizando Docling
-Home-page: https://github.com/rafaelghiorzi/pdf-parser
+Home-page: https://github.com/rafaelghiorzi/pdf_parser
 Author: Rafael Dias Ghiorzi
 Author-email: rafael.ghiorzi@gmail.com
 Classifier: Development Status :: 3 - Alpha
@@ -19,6 +19,7 @@ Classifier: Programming Language :: Python :: 3.12
 Classifier: Operating System :: OS Independent
 Requires-Python: >=3.7
 Description-Content-Type: text/markdown
+License-File: LICENSE.txt
 
 # PDF Processor
 

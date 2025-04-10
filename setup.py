@@ -10,14 +10,14 @@ with open("requirements.txt", encoding="utf-8") as f:
     requirements = f.read().strip().split("\n")
 
 setup(
-    name="pdf-parser",
+    name="pdf_parser",
     version="0.1.1",
     description="Extrator e processador de documentos PDF utilizando Docling",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="Rafael Dias Ghiorzi",
     author_email="rafael.ghiorzi@gmail.com",
-    url="https://github.com/rafaelghiorzi/pdf-parser",
+    url="https://github.com/rafaelghiorzi/pdf_parser",
     packages=find_packages(),
     install_requires=requirements,
     python_requires=">=3.7",
@@ -37,7 +37,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "pdf-processor=pdf_processor.cli:main",
+            "pdf-processor=pdf_parser.cli:main",
         ],
     },
 )

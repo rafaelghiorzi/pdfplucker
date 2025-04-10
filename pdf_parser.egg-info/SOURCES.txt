@@ -1,9 +1,10 @@
+LICENSE.txt
 README.md
 setup.py
-pdf-parser/__init__.py
-pdf-parser/cli.py
-pdf-parser/processor.py
-pdf-parser/utils.py
+pdf_parser/__init__.py
+pdf_parser/cli.py
+pdf_parser/processor.py
+pdf_parser/utils.py
 pdf_parser.egg-info/PKG-INFO
 pdf_parser.egg-info/SOURCES.txt
 pdf_parser.egg-info/dependency_links.txt
