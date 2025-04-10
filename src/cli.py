@@ -4,7 +4,7 @@ import time
 import json
 
 from pathlib import Path
-from src.processor import process_batch, process_pdf, create_converter
+from processor import process_batch, process_pdf, create_converter
 
 def create_parser():
     '''
@@ -100,7 +100,7 @@ def validate_args(args: argparse.Namespace):
         return False, f"Output path is not a directory: {args.output}"
     if not output_path.exists():
         output_path.mkdir(parents=True, exist_ok=True)
-        print(f"\033[33mWarning: Output path doesn't existing, creating: {args.output}\033[0m")
+        print(f"\033[33mWarning: Output path doesn't exist, creating at source directory: {args.output}\033[0m")
 
     # Check if images path is a directory, and create if necessary
     if args.images:
