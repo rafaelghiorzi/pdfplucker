@@ -4,8 +4,8 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pdfplucker"
-version = "0.1.5"
-description = "Extrator e processador de documentos PDF utilizando Docling"
+version = "0.2.0"
+description = "Docling wrapper for PDF parsing"
 authors = ["rafaelghiorzi <rafael.ghiorzi@gmail.com>"]
 readme = "README.md"
 repository = "https://github.com/rafaelghiorzi/pdfplucker"

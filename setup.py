@@ -11,8 +11,8 @@ with open("requirements.txt", encoding="utf-8") as f:
 
 setup(
     name="pdfplucker",
-    version="0.1.6",
-    description="Extrator e processador de documentos PDF utilizando Docling",
+    version="0.2.0",
+    description="Docling wrapper for PDF parsing",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="rafaelghiorzi",
@@ -22,13 +22,11 @@ setup(
     install_requires=requirements,
     python_requires=">=3.7",
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "Intended Audience :: Science/Research",
-        "Natural Language :: Portuguese (Brazilian)"
+        "Natural Language :: English"
         "License :: OSI Approved :: MIT License",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
