@@ -1,92 +1,198 @@
-# pdfplucker
+# PdfPlucker
 
-Uma ferramenta completa para extração e processamento de documentos PDF.
+[![PyPI version](https://badge.fury.io/py/pdfplucker.svg)](https://badge.fury.io/py/pdfplucker)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Características
+PdfPlucker is a powerful wrapper for the Docling library, specifically designed for batch processing PDF files. It provides users with fine-grained control over processing parameters and output configuration through a simple command-line interface.
 
-- Extração de texto, tabelas e imagens de documentos PDF
-- Processamento em paralelo para alta performance
-- Suporte para aceleração via CPU ou CUDA
-- Interface de linha de comando simples e intuitiva
-- Criação de estruturas de saída personalizáveis
+## Features
 
-## Instalação
+- **Comprehensive Extraction**: Extract text, tables, and images from PDF files with high fidelity
+- **Structured Outputs**: Get results in well-organized JSON and Markdown formats
+- **High Performance**: Process multiple documents simultaneously with parallel processing
+- **Hardware Acceleration**: Support for both CPU and CUDA for faster processing
+- **Simple Interface**: Intuitive CLI commands for easy parameter control
+- **Batch Processing**: Handle directories of PDFs effortlessly
+
+## Installation
+
+PdfPlucker requires Python 3.9 or higher. To install, simply run the following command:
 
 ```bash
-pip install pdf-processor
-Ou diretamente do repositório:
-bashgit clone https://github.com/yourusername/pdf-processor.git
-cd pdf-processor
-pip install -e .
+pip install pdfplucker
 ```
 
-## Dependências
-Este pacote requer as seguintes bibliotecas:
+Or install from source:
 
-- docling
-- PyMuPDF (fitz)
-- PyPDF2
-- Ainda preciso descobrir o resto das dependências
-
-## Uso
-### Linha de Comando
-Processar todos os PDFs em um diretório:
 ```bash
-pdf-processor /caminho/para/pdfs -o /caminho/de/saida -w 4
+git clone https://github.com/rafaelghiorzi/pdfplucker.git
+cd pdfplucker
+pip install -r requirements.txt
 ```
-Processar um único arquivo PDF:
+
+## Requirements
+
+- Python 3.9+
+- For CUDA support: NVIDIA GPU with CUDA drivers installed
+- Additional dependencies are automatically installed with the package
+
+## Basic Usage
+
+PdfPlucker has a built-in CLI to run the processor. The basic command structure is:
+
 ```bash
-pdf-processor /caminho/para/arquivo.pdf --single-file
+pdfplucker --source /path/to/pdf
 ```
-Usar aceleração CUDA:
+
+This will process the PDF file and save the results to `./results` by default.
+
+## Command-line Options
+
+| Option | Description |
+|--------|-------------|
+| `-s, --source` | Path to PDF files (directory or single file) |
+| `-o, --output` | Path to save processed information (default: `./results`) |
+| `-f, --folder-separation` | Create separate folders for each PDF |
+| `-i, --images` | Path to save extracted images (ignored if `--folder-separation` is active) |
+| `-t, --timeout` | Time limit in seconds for processing each PDF (default: 600) |
+| `-w, --workers` | Number of parallel processes (default: 4) |
+| `-d, --device` | Processing device: CPU, CUDA, or AUTO (default: AUTO) |
+| `-m, --markdown` | Export the document in an additional markdown file |
+
+## Examples
+
+### Process a single PDF file:
+
 ```bash
-pdf-processor /caminho/para/pdfs -d CUDA -w 4
+pdfplucker --source document.pdf
 ```
 
-## Opções
+### Process all PDFs in a directory:
+
 ```bash
-usage: pdf-processor [-h] [-o OUTPUT] [-i IMAGES] [-s] [-w WORKERS] [-t TIMEOUT]
-                     [-d {CPU,CUDA,cuda,cpu}] [--single-file]
-                     source
-
-Extrator de PDFs - Processador de documentos PDF
-
-positional arguments:
-  source                Caminho para os arquivos PDF (diretório ou arquivo único)
-
-options:
-  -h, --help            show this help message and exit
-  -o OUTPUT, --output OUTPUT
-                        Diretório para salvar os resultados (default: ./resultados)
-  -i IMAGES, --images IMAGES
-                        Diretório para salvar as imagens extraídas (ignorado se
-                        --separate-folders estiver ativado) (default: None)
-  -s, --separate-folders
-                        Criar pastas separadas para cada PDF processado (default: False)
-  -w WORKERS, --workers WORKERS
-                        Número de processos paralelos a serem usados (default: 4)
-  -t TIMEOUT, --timeout TIMEOUT
-                        Tempo limite em segundos para processamento de cada PDF (default: 900)
-  -d {CPU, CUDA, AUTO}, --device {CPU, CUDA, AUTO}
-                        Dispositivo para processamento (CPU, CUDA ou AUTO) (default: CPU)
-  --single-file         
-                        Processar apenas um arquivo em vez de usar paralelismo (default: False)
+pdfplucker --source ./documents/ --output ./extracted_data
 ```
 
-## Exemplo de uso
+### Create separate folders for each PDF and include markdown output:
+
 ```bash
-python cli.py --source //storage6/usuarios/CGDTI/IpeaDataLab/projetos/ted_mdic/BrasilMaisProdutivo/pastas_pdfs/TDs --output D:/Users/B19943781742/Desktop/teste --separate-folders --workers 6 --timeout 720 --device CPU --markdown-also
+pdfplucker --source ./documents/ --folder-separation --markdown
 ```
 
+### Specify output location for extracted images:
 
-## Como Funciona
-O PDF Processor extrai informações estruturadas de documentos PDF:
+```bash
+pdfplucker --source document.pdf --images ./images
+```
 
-- Texto: Extrai o conteúdo textual, preservando a estrutura de seções e parágrafos
-- Tabelas: Identifica e extrai tabelas, preservando sua estrutura em formato JSON
-- Imagens: Extrai imagens contidas nos documentos PDF
+### Use CUDA for processing with 8 workers:
 
-Os resultados são salvos em formato JSON estruturado para facilitar o processamento posterior.
-Licença
+```bash
+pdfplucker --source ./documents/ --device CUDA --workers 8
+```
 
-Este projeto está licenciado sob a Licença MIT - veja o arquivo LICENSE para detalhes.
+## Advanced Usage
+
+For processing large batches of PDFs, you can use the folder separation option combined with multiple workers:
+
+```bash
+pdfplucker --source ./pdf_collection/ --folder-separation --workers 8 --timeout 300
+```
+
+This will create a separate folder for each PDF, use 8 parallel processes, and set a timeout of 5 minutes per PDF.
+
+## Output Structure
+
+PdfPlucker generates structured outputs in the following formats:
+
+### JSON Output
+
+The JSON output contains:
+- Document metadata (title, author, date, etc.)
+- Extracted text divided into sections (title, text)
+- Table data with structure preserved and subtitles, if they exist
+- References to extracted images, with subtitles, if they exist
+
+Example structure:
+```json
+{
+    "metadata": {
+        "format": "PDF 1.7",
+        "title": "Microsoft Word - Sample Title",
+        "..."
+        "producer": "Microsoft: Print To PDF",
+        "creationDate": "D:20250401144737-03'00'",
+        "filename": "file.pdf"
+    },
+    "sections": [
+        {
+            "title": "Big Title!",
+            "text": "Following text after title"
+        },
+    ],
+    "images": [
+      {
+        "self_ref" : "#picture/1",
+        "ref" : "path/to/image.png",
+        "subtitle" : "possible subtitle"
+      }
+    ],
+    "tables": [
+      {
+        "self_ref" : "#table/1",
+        "subtitle" : "possible subtitle",
+        "table" : {"table in dict format"}
+      }
+    ]
+}
+```
+
+### Markdown Output
+
+When enabled with the `--markdown` flag, PdfPlucker will generate a readable Markdown file that includes:
+- Formatted document text
+- Tables rendered in Markdown syntax
+- Embedded images with base64 encoding
+
+## Troubleshooting
+
+### Common Issues
+
+- **MemoryError**: Try reducing the number of workers or processing larger PDFs individually
+- **CUDA not detected**: Ensure you have compatible NVIDIA drivers installed and visible to Python
+- **Timeout errors**: Increase the timeout value for complex or large documents
+- **Missing images**: Check file permissions in the output directory
+
+### Getting Help
+
+If you encounter issues not covered here, please open an issue on GitHub with:
+- The command you ran
+- The error message
+- Your system specifications (OS, Python version, etc.)
+
+## Version History
+
+- **0.1.5**: Initial test
+- **0.1.6**: Correct JSON formatting
+- **0.1.7**: Fixing modules versions and import
+- **0.2.0**: Formatting terminal outputs
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Contributions are welcome! If you have suggestions for improvements or new features, please:
+
+1. Check existing issues and pull requests
+2. Fork the repository
+3. Create a new branch for your feature
+4. Add your changes
+5. Submit a pull request
+
+## Acknowledgments
+
+- [Docling](https://github.com/docling-project/docling) for the core PDF processing capabilities
+- All contributors and users of PdfPlucker
