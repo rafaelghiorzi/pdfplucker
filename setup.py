@@ -10,14 +10,14 @@ with open("requirements.txt", encoding="utf-8") as f:
     requirements = f.read().strip().split("\n")
 
 setup(
-    name="pdf-processor",
-    version="0.1.0",
+    name="pdf-parser",
+    version="0.1.1",
     description="Extrator e processador de documentos PDF utilizando Docling",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="Rafael Dias Ghiorzi",
     author_email="rafael.ghiorzi@gmail.com",
-    url="sem github ainda",
+    url="https://github.com/rafaelghiorzi/pdf-parser",
     packages=find_packages(),
     install_requires=requirements,
     python_requires=">=3.7",
@@ -25,7 +25,7 @@ setup(
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
         "Intended Audience :: Science/Research",
-        "Natural Language :: Portuguese (Brazilian)"
+        "Natural Language :: Portuguese (Brazilian)",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",

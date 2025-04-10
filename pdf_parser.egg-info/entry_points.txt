@@ -1,0 +1,2 @@
+[console_scripts]
+pdf-processor = pdf_processor.cli:main
