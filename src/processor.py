@@ -5,7 +5,7 @@ import fitz
 import time
 import multiprocessing
 from pathlib import Path
-from utils import format_result, link_subtitles, Data
+from src.utils import format_result, link_subtitles, Data
 from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
