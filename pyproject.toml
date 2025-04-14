@@ -17,7 +17,7 @@ packages = [
 python = ">=3.9,<4.0"
 docling = "^2.28.4"
 PyMuPDF = "^1.25.5"
-rapidocr-onnxruntime = "^1.4.4"
+rapidocr-onnxruntime = {version = "^1.4.4", python = ">=3.9,<3.13"}
 
 [tool.poetry.scripts]
 pdfplucker = "src.cli:main"
