@@ -59,6 +59,7 @@ This will process the PDF file and save the results to `./results` by default.
 | `-w, --workers` | Number of parallel processes (default: 4) |
 | `-d, --device` | Processing device: CPU, CUDA, or AUTO (default: AUTO) |
 | `-m, --markdown` | Export the document in an additional markdown file |
+| `-ocr, --force-ocr` | Force text recognition using ocr even with digital documents | 
 
 ## Examples
 
@@ -97,10 +98,10 @@ pdfplucker --source ./documents/ --device CUDA --workers 8
 For processing large batches of PDFs, you can use the folder separation option combined with multiple workers:
 
 ```bash
-pdfplucker --source ./pdf_collection/ --folder-separation --workers 8 --timeout 300
+pdfplucker --source ./pdf_collection/ --folder-separation --workers 8 --timeout 300 --force-ocr
 ```
 
-This will create a separate folder for each PDF, use 8 parallel processes, and set a timeout of 5 minutes per PDF.
+This will create a separate folder for each PDF, use 8 parallel processes, set a timeout of 5 minutes per PDF and force ocr usage for text recognition.
 
 ## Output Structure
 
