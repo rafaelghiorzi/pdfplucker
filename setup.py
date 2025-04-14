@@ -1,4 +1,3 @@
-import os
 from setuptools import setup, find_packages
 
 # Read the contents of your README file

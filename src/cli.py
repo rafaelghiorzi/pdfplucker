@@ -4,7 +4,7 @@ import time
 import json
 
 from pathlib import Path
-from processor import process_batch, process_pdf, create_converter
+from src.processor import process_batch, process_pdf, create_converter
 
 def create_parser():
     '''
