@@ -10,7 +10,7 @@ with open("requirements.txt", encoding="utf-8") as f:
 
 setup(
     name="pdfplucker",
-    version="0.2.1",
+    version="0.2.5",
     description="Docling wrapper for PDF parsing",
     long_description=long_description,
     long_description_content_type="text/markdown",
