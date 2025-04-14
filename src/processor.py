@@ -5,7 +5,7 @@ import fitz
 import time
 import multiprocessing
 from pathlib import Path
-from src.utils import format_result, link_subtitles, Data
+from utils import format_result, link_subtitles, Data
 from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
@@ -15,9 +15,10 @@ from docling.datamodel.pipeline_options import (
     AcceleratorDevice,
     AcceleratorOptions,
     PdfPipelineOptions,
+    RapidOcrOptions
 )
 
-def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list = ['es']) -> DocumentConverter:
+def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list = ['es', 'pt'], force_ocr: bool = False) -> DocumentConverter:
     ''' Create a DocumentConverter object with the pipeline options configured''' 
 
     pipeline_options = PdfPipelineOptions()
@@ -26,8 +27,12 @@ def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list
     pipeline_options.table_structure_options.do_cell_matching = True 
     pipeline_options.ocr_options.lang = ocr_lang
     pipeline_options.generate_picture_images = True
-    # pipeline_options.generate_table_images = True in case is useful in the future
+    pipeline_options.do_picture_classification = True
     pipeline_options.images_scale = 2.0
+    if force_ocr:
+    # Rapid OCR or Easy OCr
+        ocr_options = RapidOcrOptions(force_full_page_ocr=True)
+        pipeline_options.ocr_options = ocr_options
     # Device acceleration
     device_type = AcceleratorDevice.CUDA if device.upper() == 'CUDA' else AcceleratorDevice.CPU if device.upper() == 'CPU' else AcceleratorDevice.AUTO if device.upper() == 'AUTO' else AcceleratorDevice.AUTO
     pipeline_options.accelerator_options = AcceleratorOptions(num_threads=num_threads, device=device_type)
@@ -145,7 +150,7 @@ def process_with_timeout(source: str, output: str, image_path: str, doc_converte
     except Exception:
         return False
 
-def process_batch(source: str | Path, output: str, image_path: str | None, separate_folders: bool = False, max_workers: int = 4, timeout:int = 600, device: str = 'AUTO', markdown: bool = False) -> dict:
+def process_batch(source: str | Path, output: str, image_path: str | None, separate_folders: bool = False, max_workers: int = 4, timeout:int = 600, device: str = 'AUTO', markdown: bool = False, force_ocr: bool = False) -> dict:
     """ Process a batch of PDFs at a time in paralel """
 
     source = Path(source)
@@ -158,7 +163,7 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
         image_path = Path(image_path)
 
     # create the doc_converter
-    doc_converter = create_converter(device=device, num_threads=max_workers)
+    doc_converter = create_converter(device=device, num_threads=max_workers, force_ocr=force_ocr)
 
     # create the list of files
     pdf_files = []

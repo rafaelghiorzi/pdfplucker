@@ -37,15 +37,31 @@ def format_result(conv: ConversionResult, data: Data, filename: str, image_path:
                 'table' : table.to_dict()
             })
         elif isinstance(item, PictureItem):
+            classification = None
+            if item.annotations:
+                for annotation in item.annotations:
+                    if annotation.kind == 'classification':
+                        # Find the classification with the highest confidence
+                        best_class = max(
+                            annotation.predicted_classes,
+                            key=lambda cls: cls.confidence
+                        )
+                        classification = {
+                            'class_name': best_class.class_name,
+                            'confidence': best_class.confidence
+                        }
+                        break
+
             image_filename = (image_path  / f"{filename}_{counter}.png")
-            counter += 1
             with image_filename.open('wb') as f:
                 item.get_image(conv.document).save(f, "PNG")
             data['images'].append({
                 'ref': f"{filename}_{counter}.png",
                 'self_ref' : item.self_ref,
+                'classification' : classification,
                 'subtitle' : ''
             })
+            counter += 1
 
     # Collecting the results after all iterations
     if collecting is not None:

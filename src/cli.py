@@ -4,7 +4,7 @@ import time
 import json
 
 from pathlib import Path
-from src.processor import process_batch, process_pdf, create_converter
+from processor import process_batch, process_pdf, create_converter
 
 def create_parser():
     '''
@@ -51,6 +51,13 @@ def create_parser():
         type=int,
         default=4,
         help='Number of paralels processes (threads)'
+    )
+
+    # For forcing ocr use
+    parser.add_argument(
+        '-ocr', '--force-ocr',
+        action='store_true',
+        help='Force OCR even if the PDF is not scanned'
     )
 
     parser.add_argument(
@@ -148,7 +155,8 @@ def process_single_file(args: argparse.Namespace):
 
     doc_converter = create_converter(
         device=args.device.upper(),
-        num_threads=args.workers
+        num_threads=args.workers,
+        force_ocr=args.force_ocr,
     )
 
     start_time = time.time()
@@ -173,6 +181,13 @@ def process_single_file(args: argparse.Namespace):
 def main():
     '''Main CLI function'''
     parser = create_parser()
+
+    if len(sys.argv) == 1:
+        print("\033[34mPDFPlucker CLI - Docling Wrapper\033[0m")
+        print("A tool for extracting information from PDF files.")
+        print("Use the `--help` flag to see available options.")
+        sys.exit(0)
+
     args = parser.parse_args()
     # Format the arguments
     for arg_name, arg_value in vars(args).items():
@@ -192,6 +207,7 @@ def main():
     print(f"Output path: {args.output}")
     print(f"Device type: {args.device}")
     print(f"Number of workers: {args.workers}")
+    print(f"Force OCR: {'yes' if args.force_ocr else 'no'}")
     print(f"Timeout: {args.timeout} seconds")
     print(f"Save markdown: {'yes' if args.markdown else 'no'}")
     print(f"Folder separation: {'yes' if args.folder_separation else 'no'}")
@@ -215,6 +231,7 @@ def main():
                 timeout=args.timeout,
                 device=args.device.upper(),
                 markdown=args.markdown,
+                force_ocr=args.force_ocr
             )
 
         # Save metrics to JSON file
