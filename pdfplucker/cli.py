@@ -5,7 +5,7 @@ import json
 import torch
 
 from pathlib import Path
-from processor import process_batch, process_pdf, create_converter
+from pdfplucker.processor import process_batch, process_pdf, create_converter
 
 def create_parser():
     '''
