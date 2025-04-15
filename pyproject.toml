@@ -23,7 +23,7 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.12,<4.0"
+python = ">=3.12,<3.13"
 docling = "^2.30.0"
 PyMuPDF = "^1.25.5"
 rapidocr_onnxruntime = "^1.4.4"
