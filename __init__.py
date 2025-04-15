@@ -2,10 +2,11 @@
 pdfplucker - a powerful wrapper for the Docling library
 """
 
-__version__ = "0.2.5"
+__version__ = "0.2.7"
 
-from src.processor import process_batch, process_pdf, create_converter
-from src.utils import format_result, link_subtitles
+from processor import process_batch, process_pdf, create_converter
+from utils import format_result, link_subtitles
+
 __all__ = [
     "process_batch",
     "process_pdf",

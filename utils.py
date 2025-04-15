@@ -6,6 +6,7 @@ from docling_core.types.doc import (
     DocItemLabel,
 )
 from typing import TypedDict, List, Dict, Any
+import warnings
 
 class Data(TypedDict):
     metadata: Dict[str, Any]
@@ -31,10 +32,13 @@ def format_result(conv: ConversionResult, data: Data, filename: str, image_path:
                     collecting['text'] += '\n' + item.text if collecting['text'] else item.text
         elif isinstance(item, TableItem):
             table = item.export_to_dataframe()
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                table_dict = table.to_dict()
             data['tables'].append({
                 'self_ref' : item.self_ref,
                 'subtitle' : '',
-                'table' : table.to_dict()
+                'table' : table_dict.to_dict()
             })
         elif isinstance(item, PictureItem):
             classification = None

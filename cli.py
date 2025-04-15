@@ -2,9 +2,10 @@ import sys
 import argparse
 import time
 import json
+import torch
 
 from pathlib import Path
-from src.processor import process_batch, process_pdf, create_converter
+from processor import process_batch, process_pdf, create_converter
 
 def create_parser():
     '''
@@ -133,6 +134,15 @@ def validate_args(args: argparse.Namespace):
         if not images_path.exists():
             images_path.mkdir(parents=True, exist_ok=True)
             print(f"\033[33mImages path created: {args.images}\033[0m")
+
+    if args.device.upper() == 'CUDA':
+        if not torch.cuda.is_available():
+            return False, "CUDA is not available on this device. Please use CPU or AUTO."
+    elif args.device.upper() == 'AUTO':
+        if torch.cuda.is_available():
+            args.device = 'CUDA'
+        else:
+            args.device = 'CPU'
     
     return True, None
 

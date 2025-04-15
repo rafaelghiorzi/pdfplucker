@@ -1,7 +1,7 @@
 # PdfPlucker
 
 [![PyPI version](https://badge.fury.io/py/pdfplucker.svg)](https://badge.fury.io/py/pdfplucker)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 PdfPlucker is a powerful wrapper for the Docling library, specifically designed for batch processing PDF files. It provides users with fine-grained control over processing parameters and output configuration through a simple command-line interface.
@@ -17,11 +17,19 @@ PdfPlucker is a powerful wrapper for the Docling library, specifically designed 
 
 ## Installation
 
-PdfPlucker requires Python 3.9 or higher. To install, simply run the following command:
+PdfPlucker requires Python 3.12 or higher. To install, simply run the following command:
 
 ```bash
 pip install pdfplucker
 ```
+
+if you want GPU support, run:
+
+```bash
+pip install pdfplucker[gpu]
+```
+_Note: For GPU support, you may need to install the PyTorch version that matches your CUDA version._
+_Check your CUDA version with `nvidia-smi` and visit https://pytorch.org/get-started/locally/ for instructions_
 
 Or install from source:
 
@@ -33,8 +41,8 @@ pip install -r requirements.txt
 
 ## Requirements
 
-- Python 3.9+
-- For CUDA support: NVIDIA GPU with CUDA drivers installed
+- Python 3.12+
+- For CUDA support: An NVIDIA GPU with drivers up to date
 - Additional dependencies are automatically installed with the package
 
 ## Basic Usage
@@ -60,6 +68,21 @@ This will process the PDF file and save the results to `./results` by default.
 | `-d, --device` | Processing device: CPU, CUDA, or AUTO (default: AUTO) |
 | `-m, --markdown` | Export the document in an additional markdown file |
 | `-ocr, --force-ocr` | Force text recognition using ocr even with digital documents | 
+
+### Markdown Output
+
+When enabled with the `--markdown` flag, PdfPlucker will generate a readable Markdown file that includes:
+- Formatted document text
+- Tables rendered in Markdown syntax
+- Embedded images with base64 encoding
+
+### Force OCR option
+
+Docling will extract text from natively digital PDFs. If you wish to force the use of OCR tools to scan the file text, run the command with the `--force-ocr` flag.
+
+### Amount of workers
+
+When processing large amounts of files, note that many workers might lead to RAM shortage and memory leaks, mainly when paired with forced ocr. Try balancing the amount of workers with the amount of available memory and power of your computer.
 
 ## Examples
 
@@ -148,13 +171,6 @@ Example structure:
     ]
 }
 ```
-
-### Markdown Output
-
-When enabled with the `--markdown` flag, PdfPlucker will generate a readable Markdown file that includes:
-- Formatted document text
-- Tables rendered in Markdown syntax
-- Embedded images with base64 encoding
 
 ## Troubleshooting
 
