@@ -28,6 +28,7 @@ def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list
     pipeline_options.ocr_options.lang = ocr_lang
     pipeline_options.generate_picture_images = True
     pipeline_options.do_picture_classification = True
+    pipeline_options.do_formula_enrichment = True
     pipeline_options.images_scale = 2.0
     if force_ocr:
     # Rapid OCR or Easy OCr

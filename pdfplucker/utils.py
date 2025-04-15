@@ -27,6 +27,9 @@ def format_result(conv: ConversionResult, data: Data, filename: str, image_path:
                 if collecting is not None:
                     data['sections'].append(collecting)
                 collecting = {'title': item.text, 'text': ''}
+            elif isinstance(item, DocItemLabel.FORMULA):
+                if collecting is not None:
+                    collecting['text'] += '\n' + "Equation:" + item.text if collecting['text'] else item.text
             else:
                 if collecting is not None:
                     collecting['text'] += '\n' + item.text if collecting['text'] else item.text
