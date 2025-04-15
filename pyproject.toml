@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pdfplucker"
-version = "0.3.2"
+version = "0.3.3"
 description = "Docling wrapper for PDF parsing"
 authors = [ { name = "Rafael Ghiorzi", email = "rafael.ghiorzi@gmail.com" } ]
 maintainers = [ { name = "Rafael Ghiorzi", email = "rafael.ghiorzi@gmail.com" } ]
@@ -14,7 +14,6 @@ keywords = [
     "ocr",
     "parser"
 ]
-license = { file = "LICENSE" }
 readme = "README.md"
 repository = "https://github.com/rafaelghiorzi/pdfplucker"
 packages = [
