@@ -4,10 +4,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pdfplucker"
-version = "0.3.3"
+version = "0.3.4"
 description = "Docling wrapper for PDF parsing"
-authors = [ { name = "Rafael Ghiorzi", email = "rafael.ghiorzi@gmail.com" } ]
-maintainers = [ { name = "Rafael Ghiorzi", email = "rafael.ghiorzi@gmail.com" } ]
+authors = ["rafaelghiorzi <rafael.ghiorzi@gmail.com>"]
 keywords = [
     "docling",
     "pdf",
