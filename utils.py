@@ -38,7 +38,7 @@ def format_result(conv: ConversionResult, data: Data, filename: str, image_path:
             data['tables'].append({
                 'self_ref' : item.self_ref,
                 'subtitle' : '',
-                'table' : table_dict.to_dict()
+                'table' : table_dict
             })
         elif isinstance(item, PictureItem):
             classification = None
