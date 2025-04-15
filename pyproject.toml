@@ -27,6 +27,7 @@ python = ">=3.12,<3.13"
 docling = "^2.30.0"
 PyMuPDF = "^1.25.5"
 rapidocr_onnxruntime = "^1.4.4"
+onnxruntime-gpu = { version = "^1.21.0", optional = true }
 
 [tool.poetry.group.dev.dependencies]
 setuptools = "^78.1.0"
@@ -35,13 +36,7 @@ setuptools = "^78.1.0"
 pdfplucker = "pdfplucker.cli:main"
 
 [tool.poetry.extras]
-gpu = [
-    # For cuda, guide the user to install the pytorch version that matches their cuda version
-    # https://pytorch.org/get-started/locally/
-    # Check using nvidia-smi
-    "onnxruntime-gpu",
-]
+gpu = ["onnxruntime-gpu"]
 
 [tool.poetry.urls]
 "Bug Tracker" = "https://github.com/rafaelghiorzi/pdfplucker/issues"
-
