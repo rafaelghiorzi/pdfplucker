@@ -1,11 +1,13 @@
+# CLI.py
+
 import sys
 import argparse
 import time
 import json
 import torch
-
+import psutil
 from pathlib import Path
-from pdfplucker.processor import process_batch, process_pdf, create_converter
+from processor import process_batch, process_pdf, create_converter
 
 def create_parser():
     '''
@@ -74,6 +76,25 @@ def create_parser():
         help='Export the document in an aditional markdown file'
     )
 
+    parser.add_argument(
+        '-r', '--resume',
+        action='store_true',
+        help='Resume the process from the last checkpoint'
+    )
+
+    parser.add_argument(
+        '-l', '--low-memory',
+        action='store_true',
+        help='Enable low memory mode (more agressive garbage collection)'
+    )
+
+    parser.add_argument(
+        '-a', '--amount',
+        type=int,
+        default=0,
+        help='Amount of files to process'
+    )
+
     return parser
 
 def validate_args(args: argparse.Namespace):
@@ -98,9 +119,16 @@ def validate_args(args: argparse.Namespace):
     if args.workers < 1:
         return False, f"Number of workers must be greater than 0: {args.workers}"
     
+    # Optimize amount of processors
+    cpu_count = psutil.cpu_count(logical=False) or 4
+    if args.workers > cpu_count + 1:
+        print(f"\033[33mWarning: Number of workers is greater than available CPU cores ({cpu_count}). Using {args.workers} instead.\033[0m")
+        print(f"\033[33mConsider using {cpu_count} workers instead.\033[0m")
+    
     # Check timeout
     if args.timeout < 1:
         return False, f"Timeout must be greater than 0: {args.timeout}"
+    
     
     # Check if output path is a directory, and create if necessary
     output_path = Path(args.output)
@@ -143,8 +171,27 @@ def validate_args(args: argparse.Namespace):
             args.device = 'CUDA'
         else:
             args.device = 'CPU'
+
+    mem = psutil.virtual_memory()
+    if mem.percent > 80:
+        print("\033[33mWarning: Memory usage is high. Consider closing other applications.\033[0m")
+        print
     
     return True, None
+
+def get_processed_files(output_path: Path) -> set:
+    '''Get the list of already processed files'''
+    processed = set()
+    if output_path.exists():
+        for json_file in output_path.glob("*.json"):
+            if not json_file.name.endswith('_metrics.json'):
+                processed.add(json_file.stem)
+        
+        for subdir in output_path.iterdir():
+            if subdir.is_dir() :
+                for json_file in subdir.glob("*.json"):
+                    processed.add(json_file.stem)
+    return processed
 
 def process_single_file(args: argparse.Namespace):
     '''Process a single PDF file and save the results'''
@@ -184,6 +231,11 @@ def process_single_file(args: argparse.Namespace):
         print("=" * 50)
         print(f"Output path: {output_path}")
         print(f"Images path: {images_path}")
+
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        memory_mb = memory_info.rss / 1024 / 1024
+        print(f"Memory usage: {memory_mb:.2f} MB")
     else:
         print(f"\033[31mProcessing failed\033[0m")
     return success
@@ -221,9 +273,15 @@ def main():
     print(f"Timeout: {args.timeout} seconds")
     print(f"Save markdown: {'yes' if args.markdown else 'no'}")
     print(f"Folder separation: {'yes' if args.folder_separation else 'no'}")
+    print(f"Resume: {'yes' if args.resume else 'no'}")  
     print(f"Images path: {args.images if args.images else 'not used'}")
     print("=" * 50)
     print("Starting...")
+
+    if args.low_memory:
+        import os
+        os.environ['LOW_MEMORY'] = '1'
+        print("\033[33mLow memory mode enabled\033[0m")
 
     # Start the processing
     try:
@@ -232,6 +290,12 @@ def main():
             sucess =  process_single_file(args)
             sys.exit(0 if sucess else 1)
         else:
+
+            skip_files = set()
+            if args.resume:
+                skip_files = get_processed_files(Path(args.output))
+                if skip_files:
+                    print(f"\033[33mResuming from last checkpoint. Skipping {len(skip_files)} files.\033[0m")
             metrics = process_batch(
                 source=args.source,
                 output=args.output,
@@ -241,7 +305,9 @@ def main():
                 timeout=args.timeout,
                 device=args.device.upper(),
                 markdown=args.markdown,
-                force_ocr=args.force_ocr
+                force_ocr=args.force_ocr,
+                skip_files = skip_files if args.resume else None,
+                amount = args.amount if args.amount > 0 else None,
             )
 
         # Save metrics to JSON file
@@ -260,12 +326,21 @@ def main():
         print(f"Success rate: {metrics['success_rate']}")
         print(f"Total time elapsed: {metrics['elapsed_time']:.2f} seconds")
         print("=" * 50)
+
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        memory_mb = memory_info.rss / 1024 / 1024
+        print(f"Memory usage: {memory_mb:.2f} MB")
+        print("=" * 50)
     
     except KeyboardInterrupt:
         print("\033[31mProcess interrupted by user\033[0m")
+        print("\033[31mYou can resume the process later using the --resume flag\033[0m")
         sys.exit(1)
     except Exception as e:
         print(f"\033[31mAn error occurred: {e}\033[0m")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":

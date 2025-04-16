@@ -1,11 +1,14 @@
+# processor.py
+
 import os
 import gc
 import json
 import fitz
 import time
+import psutil
 import multiprocessing
 from pathlib import Path
-from pdfplucker.utils import format_result, link_subtitles, Data
+from utils import format_result, link_subtitles, Data, AnimatedProgressBar
 from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
@@ -15,11 +18,21 @@ from docling.datamodel.pipeline_options import (
     AcceleratorDevice,
     AcceleratorOptions,
     PdfPipelineOptions,
-    RapidOcrOptions
+    EasyOcrOptions,
 )
+
+_converter_cache = {} # caching converters for memory efficiency
 
 def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list = ['es', 'pt'], force_ocr: bool = False) -> DocumentConverter:
     ''' Create a DocumentConverter object with the pipeline options configured''' 
+
+    # check low memory mode
+    low_mem = os.environ.get('LOW_MEMORY', '0') == '1'
+
+    # Using cache to avoid repeatedly loading the same model
+    cache_key = f"{device}_{num_threads}_{'_'.join(ocr_lang)}_{force_ocr}"
+    if cache_key in _converter_cache:
+        return _converter_cache[cache_key]
 
     pipeline_options = PdfPipelineOptions()
     pipeline_options.do_ocr = True
@@ -29,23 +42,40 @@ def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list
     pipeline_options.generate_picture_images = True
     pipeline_options.do_picture_classification = True
     pipeline_options.do_formula_enrichment = True
-    pipeline_options.images_scale = 2.0
+    pipeline_options.images_scale = 0.5 if low_mem else 1.0
     if force_ocr:
     # Rapid OCR or Easy OCr
-        ocr_options = RapidOcrOptions(force_full_page_ocr=True)
+        ocr_options = EasyOcrOptions(force_full_page_ocr=True, lang=ocr_lang)
         pipeline_options.ocr_options = ocr_options
     # Device acceleration
     device_type = AcceleratorDevice.CUDA if device.upper() == 'CUDA' else AcceleratorDevice.CPU if device.upper() == 'CPU' else AcceleratorDevice.AUTO if device.upper() == 'AUTO' else AcceleratorDevice.AUTO
+    
+    if low_mem and num_threads > 2:
+        num_threads = max(2, num_threads // 2) # Reduce threads in low memory mode
     pipeline_options.accelerator_options = AcceleratorOptions(num_threads=num_threads, device=device_type)
 
-    return DocumentConverter(
+    converter = DocumentConverter(
         format_options={
             InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
         }
     )
 
-def process_pdf(source: str, output: str, image_path: str | None, doc_converter: DocumentConverter, separate_folders: bool | None = False, markdown: bool = False) -> bool:
+    _converter_cache[cache_key] = converter
+    return converter
+
+def force_gc():
+    """Force garbage collection to free memory"""
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6').malloc_trim(0)
+    except:
+        pass # not always available
+
+def process_pdf(source: str, output: str, image_path: str | None, doc_converter: DocumentConverter, separate_folders: bool | None = False, markdown: bool = False, progress_bar = None) -> bool:
     """Function to process a single PDF file utilizing Docling"""
+
+    low_memory_mode = os.environ.get('LOW_MEMORY', '0') == '1'
 
     filename = os.path.basename(source)
     base_filename = os.path.splitext(filename)[0]
@@ -63,7 +93,10 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
 
         image_folder_path = Path(image_folder)
 
-        print(f"\033[33mProcessing: {filename}\033[0m")
+        if progress_bar:
+            progress_bar.update(1, status=f"Processing {filename}")
+        else:
+            print(f"\033[33mProcessing: {filename}\033[0m")
 
         data: Data = {
             "metadata": {},
@@ -77,10 +110,17 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
             data["metadata"] = doc.metadata
             data["metadata"]["filename"] = filename
 
+
         # Converting the source file to a Docling document
         conv: ConversionResult = doc_converter.convert(source)
         format_result(conv, data, base_filename, image_folder_path)
         link_subtitles(data)
+
+        if low_memory_mode:
+            # Free memory after processing each file in low memory mode
+            force_gc()
+            del conv
+
 
         # Save Markdown if asked
         if markdown:
@@ -94,13 +134,22 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
         return True
     
     except (fitz.FileDataError, fitz.EmptyFileError) as e:
-        print(f"\033[31mFailed to process {filename}: {e}\033[0m")
+        if progress_bar:
+            progress_bar.update(1, status=f"Failed to process {filename}: {e}")
+        else:
+            print(f"\033[31mFailed to process {filename}: {e}\033[0m")
         return False
     except IOError as e:
-        print(f"\033[31mI/O error while processing: {e}\033[0m")
+        if progress_bar:
+            progress_bar.update(1, status=f"I/O error while processing {filename}: {e}")
+        else:        
+            print(f"\033[31mI/O error while processing: {e}\033[0m")
         return False
     except Exception as e:
-        print(f"\033[31mAn error has occurred: {e}\033[0m") 
+        if progress_bar:
+            progress_bar.update(1, status=f"An error has occurred with {filename}: {e}")
+        else:      
+            print(f"\033[31mAn error has occurred: {e}\033[0m") 
         return False
     
     finally:
@@ -109,9 +158,22 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
                 del conv
             if 'data' in locals():
                 del data
-            gc.collect()
+            force_gc() # more agressive garbage collection
+
+            # Monitor memory and handle critical situations
+            if psutil.virtual_memory().percent > 80:
+                if progress_bar:
+                    progress_bar.update(1, status="Memory usage high! Forcing garbage collection...")
+                else:
+                    print(f"\033[31mMemory usage high! Forcing garbage collection...\033[0m")
+                force_gc()
+                time.sleep(1) # Give some time for the garbage collector to work
+
         except Exception as e:
-            print(f"\033[31mAn error has occurred while trying to free memory: {e}\033[0m")
+            if progress_bar:
+                progress_bar.update(1, status=f"Error while freeing memory: {e}")
+            else:
+                print(f"\033[31mAn error has occurred while trying to free memory: {e}\033[0m")
 
 def _worker(source, output, image_path, doc_converter, separate_folders, markdown, queue):
     try:
@@ -151,8 +213,17 @@ def process_with_timeout(source: str, output: str, image_path: str, doc_converte
     except Exception:
         return False
 
-def process_batch(source: str | Path, output: str, image_path: str | None, separate_folders: bool = False, max_workers: int = 4, timeout:int = 600, device: str = 'AUTO', markdown: bool = False, force_ocr: bool = False) -> dict:
+def process_batch(source: str | Path, output: str, image_path: str | None, separate_folders: bool = False, max_workers: int = 4, timeout:int = 600, device: str = 'AUTO', markdown: bool = False, force_ocr: bool = False, skip_files: set = None, amount: int = None) -> dict:
     """ Process a batch of PDFs at a time in paralel """
+
+    # Check for low memory mode
+    low_memory_mode = os.environ.get('LOW_MEMORY', '0') == '1'
+    
+    # Reduce workers in low memory mode
+    if low_memory_mode and max_workers > 2:
+        max_workers = max(2, max_workers // 2)  # Reduce workers but keep at least 2
+        print("\033[33mLow memory mode: Reduced worker count to {}\033[0m".format(max_workers))
+
 
     source = Path(source)
     output = Path(output)
@@ -171,11 +242,19 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
     if source.is_dir():
         for file in os.listdir(source):
             if file.lower().endswith('.pdf'):
-                pdf_files.append(os.path.join(source, file))
+                file_path = os.path.join(source, file)
+                file_stem = Path(file_path).stem
+                # Skip files that have already been processed if resuming
+                if skip_files and file_stem in skip_files:
+                    continue
+                pdf_files.append(file_path)
     else:
         # Redundancy for safety
         if source.suffix.lower() == '.pdf':
             pdf_files.append(str(source))
+
+    if amount is not None and amount > 0:
+        pdf_files = pdf_files[:amount]
 
     total_docs = len(pdf_files)
     print(f"\033[33mTotal amount of documents to be processed: {total_docs}\033[0m")
@@ -191,6 +270,10 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
         'success_rate' : 0.1,
         'fails': []
     }
+
+    # initialize progress bar
+    progress_bar = AnimatedProgressBar(desc="Processing PDFs")
+    progress_bar.start(total=total_docs)
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures  = {
@@ -212,7 +295,7 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
                 success = future.result()
                 if success:
                     metrics['processed_docs'] += 1
-                    print(f"\033[32mSuccessfuly processed {os.path.basename(pdf_file)}\033[0m")
+                    progress_bar.update(1, status=f"Processed {os.path.basename(pdf_file)}")
                 else:
                     metrics['processed_docs'] += 1
                     metrics['failed_docs'] += 1
@@ -220,9 +303,9 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
                         'file' : pdf_file,
                         'error': 'unknown'
                     })
-                    print(f"\033[31m{pdf_file} failed\033[0m")
+                    progress_bar.update(1, status=f"Failed to process {os.path.basename(pdf_file)}")
             except TimeoutError:
-                print(f"\033[31m{os.path.basename(pdf_file)} reached time limit! Killing process\033[0m")
+                progress_bar.update(1, status=f"Timeout for {os.path.basename(pdf_file)}")
                 metrics['timeout_docs'] += 1
                 metrics['fails'].append({
                     'file' : pdf_file,
@@ -230,17 +313,23 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
                 })
 
             except Exception as e:
-                print(f"\033[31mAn error has occurred while processing {os.path.basename(pdf_file)}: {e}\033[0m")
+                progress_bar.update(1, status=f"Error while processing {os.path.basename(pdf_file)}: {e}")
                 metrics['failed_docs'] += 1
                 metrics['fails'].append({
                     'file' : pdf_file,
                     'error': str(e)
                 })
 
+    progress_bar.finish()
+    # Clean up the converter
+    del doc_converter
+    force_gc()
+
     # Conclude metrics
     total_time = time.time() - metrics['initial_time']
     metrics['elapsed_time'] = total_time
-    metrics['success_rate'] = (metrics['failed_docs'] + metrics['timeout_docs']) / total_docs * 100
+    metrics['success_rate'] = ((total_docs - metrics['failed_docs'] - metrics['timeout_docs']) / total_docs) * 100 if total_docs > 0 else 0
 
     print(f"\033[32mParsing process has finished!\033[0m")
     return metrics
+
