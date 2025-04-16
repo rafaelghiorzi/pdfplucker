@@ -1,5 +1,5 @@
 # CLI.py
-
+import os
 import sys
 import argparse
 import time
@@ -106,7 +106,7 @@ def validate_args(args: argparse.Namespace):
         return False, f"Source path not found: {args.source}"
     
     # Checking if source, as a directory, contains PDFs
-    if source_path.is_dir():
+    if Path(source_path).is_dir():
         pdf_files = list(source_path.glob("*.pdf"))
         if not pdf_files:
             return False, f"No PDF files found: {args.source}"
@@ -179,9 +179,10 @@ def validate_args(args: argparse.Namespace):
     
     return True, None
 
-def get_processed_files(output_path: Path) -> set:
+def get_processed_files(output_path: str) -> set:
     '''Get the list of already processed files'''
     processed = set()
+    output_path = Path(output_path)
     if output_path.exists():
         for json_file in output_path.glob("*.json"):
             if not json_file.name.endswith('_metrics.json'):
@@ -195,19 +196,17 @@ def get_processed_files(output_path: Path) -> set:
 
 def process_single_file(args: argparse.Namespace):
     '''Process a single PDF file and save the results'''
-    source_path = Path(args.source)
-    output_path = Path(args.output)
+    source_path = args.source
+    output_path = args.output
 
     if args.folder_separation:
-        images_path = output_path / source_path.stem / 'images'
-    elif args.images:
-        images_path = Path(args.images)
+        images_path = f"{output_path}/{os.path.basename(source_path)}/images"
     else:
-        images_path = output_path / 'images'
+        images_path = f"{output_path}/images"
     
     # Create the images path if it doesn't exist
-    if not images_path.exists():
-        images_path.mkdir(parents=True, exist_ok=True)
+    if not os.path.exists(images_path):
+        os.mkdir(images_path)
         print(f"\033[32mImages path created: {images_path}\033[0m")
 
     doc_converter = create_converter(
@@ -218,9 +217,9 @@ def process_single_file(args: argparse.Namespace):
 
     start_time = time.time()
     success = process_pdf(
-        str(source_path),
-        str(output_path),
-        str(images_path),
+        source_path,
+        output_path,
+        images_path,
         doc_converter,
         args.folder_separation,
         args.markdown,

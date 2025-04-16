@@ -77,10 +77,6 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
 
     low_memory_mode = os.environ.get('LOW_MEMORY', '0') == '1'
 
-    source = Path(source)
-    output = Path(output)
-    image_path = Path(image_path) if image_path else None
-
     filename = os.path.basename(source)
     base_filename = os.path.splitext(filename)[0]
 
@@ -113,7 +109,7 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
 
 
         # Converting the source file to a Docling document
-        conv: ConversionResult = doc_converter.convert(str(source))
+        conv: ConversionResult = doc_converter.convert(source)
         format_result(conv, data, base_filename, image_folder_path)
         link_subtitles(data)
 
@@ -122,14 +118,13 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
             force_gc()
             del conv
 
-
         # Save Markdown if asked
         if markdown:
             md_filename = result.replace('.json', '.md')
-            conv.document.save_as_markdown(md_filename, image_mode=ImageRefMode.EMBEDDED)
+            conv.document.save_as_markdown(Path(md_filename), image_mode=ImageRefMode.EMBEDDED)
         
         # Save JSON
-        with open(result, 'w', encoding='utf-8') as f:
+        with open(Path(result), 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
         return True
@@ -206,7 +201,6 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
 
     # Check for low memory mode
     low_memory_mode = os.environ.get('LOW_MEMORY', '0') == '1'
-    lock = multiprocessing.Lock()
     
     # Reduce workers in low memory mode
     if low_memory_mode and max_workers > 2:
@@ -214,22 +208,16 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
         print("\033[33mLow memory mode: Reduced worker count to {}\033[0m".format(max_workers))
 
 
-    source = Path(source)
-    output = Path(output)
-    image_path = Path(image_path) if image_path else None
-
     # path config
     if not separate_folders and image_path is None:
-        image_path = output / "images"
-    elif image_path is not None:
-        image_path = Path(image_path)
+        image_path = f"{output}/images"
 
     # create the doc_converter
     doc_converter = create_converter(device=device, num_threads=max_workers, force_ocr=force_ocr)
 
     # create the list of files
     pdf_files = []
-    if source.is_dir():
+    if Path(source).is_dir():
         for file in os.listdir(source):
             if file.lower().endswith('.pdf'):
                 file_path = os.path.join(source, file)
