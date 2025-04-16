@@ -8,7 +8,7 @@ import time
 import psutil
 import multiprocessing
 from pathlib import Path
-from utils import format_result, link_subtitles, Data, AnimatedProgressBar
+from utils import format_result, link_subtitles, Data
 from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
@@ -77,6 +77,10 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
 
     low_memory_mode = os.environ.get('LOW_MEMORY', '0') == '1'
 
+    source = Path(source)
+    output = Path(output)
+    image_path = Path(image_path) if image_path else None
+
     filename = os.path.basename(source)
     base_filename = os.path.splitext(filename)[0]
 
@@ -93,10 +97,7 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
 
         image_folder_path = Path(image_folder)
 
-        if progress_bar:
-            progress_bar.update(1, status=f"Processing {filename}")
-        else:
-            print(f"\033[33mProcessing: {filename}\033[0m")
+        print(f"\033[33mProcessing: {filename}\033[0m")
 
         data: Data = {
             "metadata": {},
@@ -134,22 +135,13 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
         return True
     
     except (fitz.FileDataError, fitz.EmptyFileError) as e:
-        if progress_bar:
-            progress_bar.update(1, status=f"Failed to process {filename}: {e}")
-        else:
-            print(f"\033[31mFailed to process {filename}: {e}\033[0m")
+        print(f"\033[31mFailed to process {filename}: {e}\033[0m")
         return False
-    except IOError as e:
-        if progress_bar:
-            progress_bar.update(1, status=f"I/O error while processing {filename}: {e}")
-        else:        
-            print(f"\033[31mI/O error while processing: {e}\033[0m")
+    except IOError as e:      
+        print(f"\033[31mI/O error while processing: {e}\033[0m")
         return False
-    except Exception as e:
-        if progress_bar:
-            progress_bar.update(1, status=f"An error has occurred with {filename}: {e}")
-        else:      
-            print(f"\033[31mAn error has occurred: {e}\033[0m") 
+    except Exception as e:    
+        print(f"\033[31mAn error has occurred: {e}\033[0m") 
         return False
     
     finally:
@@ -162,18 +154,12 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
 
             # Monitor memory and handle critical situations
             if psutil.virtual_memory().percent > 80:
-                if progress_bar:
-                    progress_bar.update(1, status="Memory usage high! Forcing garbage collection...")
-                else:
-                    print(f"\033[31mMemory usage high! Forcing garbage collection...\033[0m")
+                print(f"\033[31mMemory usage high! Forcing garbage collection...\033[0m")
                 force_gc()
                 time.sleep(1) # Give some time for the garbage collector to work
 
         except Exception as e:
-            if progress_bar:
-                progress_bar.update(1, status=f"Error while freeing memory: {e}")
-            else:
-                print(f"\033[31mAn error has occurred while trying to free memory: {e}\033[0m")
+            print(f"\033[31mAn error has occurred while trying to free memory: {e}\033[0m")
 
 def _worker(source, output, image_path, doc_converter, separate_folders, markdown, queue):
     try:
@@ -218,6 +204,7 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
 
     # Check for low memory mode
     low_memory_mode = os.environ.get('LOW_MEMORY', '0') == '1'
+    lock = multiprocessing.Lock()
     
     # Reduce workers in low memory mode
     if low_memory_mode and max_workers > 2:
@@ -227,6 +214,7 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
 
     source = Path(source)
     output = Path(output)
+    image_path = Path(image_path) if image_path else None
 
     # path config
     if not separate_folders and image_path is None:
@@ -271,10 +259,6 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
         'fails': []
     }
 
-    # initialize progress bar
-    progress_bar = AnimatedProgressBar(desc="Processing PDFs")
-    progress_bar.start(total=total_docs)
-
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures  = {
             executor.submit(
@@ -295,7 +279,7 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
                 success = future.result()
                 if success:
                     metrics['processed_docs'] += 1
-                    progress_bar.update(1, status=f"Processed {os.path.basename(pdf_file)}")
+                    print(f"\033[32mSuccessfully processed {os.path.basename(pdf_file)}\033[0m")
                 else:
                     metrics['processed_docs'] += 1
                     metrics['failed_docs'] += 1
@@ -303,9 +287,9 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
                         'file' : pdf_file,
                         'error': 'unknown'
                     })
-                    progress_bar.update(1, status=f"Failed to process {os.path.basename(pdf_file)}")
+                    print(f"\033[31mFailed to process {os.path.basename(pdf_file)}\033[0m")
             except TimeoutError:
-                progress_bar.update(1, status=f"Timeout for {os.path.basename(pdf_file)}")
+                print(f"\033[31mTimeout reached for {os.path.basename(pdf_file)}\033[0m")
                 metrics['timeout_docs'] += 1
                 metrics['fails'].append({
                     'file' : pdf_file,
@@ -313,14 +297,12 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
                 })
 
             except Exception as e:
-                progress_bar.update(1, status=f"Error while processing {os.path.basename(pdf_file)}: {e}")
+                print(f"\033[31mAn error occurred while processing {os.path.basename(pdf_file)}: {e}\033[0m")
                 metrics['failed_docs'] += 1
                 metrics['fails'].append({
                     'file' : pdf_file,
                     'error': str(e)
                 })
-
-    progress_bar.finish()
     # Clean up the converter
     del doc_converter
     force_gc()
