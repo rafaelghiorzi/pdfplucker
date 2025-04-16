@@ -113,7 +113,7 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
 
 
         # Converting the source file to a Docling document
-        conv: ConversionResult = doc_converter.convert(source)
+        conv: ConversionResult = doc_converter.convert(str(source))
         format_result(conv, data, base_filename, image_folder_path)
         link_subtitles(data)
 
@@ -141,6 +141,8 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
         print(f"\033[31mI/O error while processing: {e}\033[0m")
         return False
     except Exception as e:    
+        import traceback
+        traceback.print_exc()
         print(f"\033[31mAn error has occurred: {e}\033[0m") 
         return False
     
