@@ -3,11 +3,10 @@ import os
 import sys
 import argparse
 import time
-import json
 import torch
 import psutil
 from pathlib import Path
-from processor import process_batch, process_pdf, create_converter
+from core import pdfplucker
 
 def create_parser():
     '''
@@ -77,18 +76,6 @@ def create_parser():
     )
 
     parser.add_argument(
-        '-r', '--resume',
-        action='store_true',
-        help='Resume the process from the last checkpoint'
-    )
-
-    parser.add_argument(
-        '-l', '--low-memory',
-        action='store_true',
-        help='Enable low memory mode (more agressive garbage collection)'
-    )
-
-    parser.add_argument(
         '-a', '--amount',
         type=int,
         default=0,
@@ -128,7 +115,6 @@ def validate_args(args: argparse.Namespace):
     # Check timeout
     if args.timeout < 1:
         return False, f"Timeout must be greater than 0: {args.timeout}"
-    
     
     # Check if output path is a directory, and create if necessary
     output_path = Path(args.output)
@@ -179,21 +165,6 @@ def validate_args(args: argparse.Namespace):
     
     return True, None
 
-def get_processed_files(output_path: str) -> set:
-    '''Get the list of already processed files'''
-    processed = set()
-    output_path = Path(output_path)
-    if output_path.exists():
-        for json_file in output_path.glob("*.json"):
-            if not json_file.name.endswith('_metrics.json'):
-                processed.add(json_file.stem)
-        
-        for subdir in output_path.iterdir():
-            if subdir.is_dir() :
-                for json_file in subdir.glob("*.json"):
-                    processed.add(json_file.stem)
-    return processed
-
 def process_single_file(args: argparse.Namespace):
     '''Process a single PDF file and save the results'''
     source_path = args.source
@@ -209,21 +180,19 @@ def process_single_file(args: argparse.Namespace):
         os.mkdir(images_path)
         print(f"\033[32mImages path created: {images_path}\033[0m")
 
-    doc_converter = create_converter(
-        device=args.device.upper(),
-        num_threads=args.workers,
+    start_time = time.time()
+    success = pdfplucker(
+        source=source_path,
+        output=output_path,
+        folder_separation=args.folder_separation,
+        images=images_path,
+        timeout=args.timeout,
+        workers=args.workers,
         force_ocr=args.force_ocr,
+        device=args.device,
+        markdown=args.markdown,
     )
 
-    start_time = time.time()
-    success = process_pdf(
-        source_path,
-        output_path,
-        images_path,
-        doc_converter,
-        args.folder_separation,
-        args.markdown,
-    )
     elapsed_time = time.time() - start_time
     if success:
         print(f"\033[32mProcessing completed successfully in {elapsed_time:.2f} seconds\033[0m")
@@ -277,11 +246,6 @@ def main():
     print("=" * 50)
     print("Starting...")
 
-    if args.low_memory:
-        import os
-        os.environ['LOW_MEMORY'] = '1'
-        print("\033[33mLow memory mode enabled\033[0m")
-
     # Start the processing
     try:
         if Path(args.source).is_file():
@@ -289,35 +253,23 @@ def main():
             sucess =  process_single_file(args)
             sys.exit(0 if sucess else 1)
         else:
-
-            skip_files = set()
-            if args.resume:
-                skip_files = get_processed_files(Path(args.output))
-                if skip_files:
-                    print(f"\033[33mResuming from last checkpoint. Skipping {len(skip_files)} files.\033[0m")
-            metrics = process_batch(
+            metrics = pdfplucker(
                 source=args.source,
                 output=args.output,
-                image_path=args.images,
-                separate_folders=args.folder_separation,
-                max_workers=args.workers,
+                folder_separation=args.folder_separation,
+                images=args.images,
                 timeout=args.timeout,
-                device=args.device.upper(),
-                markdown=args.markdown,
+                workers=args.workers,
                 force_ocr=args.force_ocr,
-                skip_files = skip_files if args.resume else None,
-                amount = args.amount if args.amount > 0 else None,
+                device=args.device,
+                markdown=args.markdown,
+                amount=args.amount if args.amount > 0 else 0,
             )
-
-        # Save metrics to JSON file
-        metrics_path = Path(args.output) / f"{Path(args.source).name}_metrics.json"
-        with open(metrics_path, 'w', encoding='utf-8') as f:
-            json.dump(metrics, f, indent=4, ensure_ascii=False)
 
         # Print the metrics
         print("=" * 50)
         print("\033[32mProcessing completed successfully\033[0m")
-        print(f"\033[32mMetrics saved to: {metrics_path}\033[0m")      
+        print(f"\033[32mMetrics in output path as final_metrics.json\033[0m")      
         print("=" * 50)
         print(f"Total amount of files: {metrics['total_docs']}")
         print(f"Successfully processed: {metrics['processed_docs']}")

@@ -142,3 +142,4 @@ def link_subtitles(data: Data) -> None:
             del images
         if 'tables' in locals():
             del tables
+
