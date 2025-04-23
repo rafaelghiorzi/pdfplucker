@@ -1,5 +1,3 @@
-# processor.py
-
 import os
 import gc
 import json
@@ -7,8 +5,9 @@ import fitz
 import time
 import psutil
 import multiprocessing
+import logging
 from pathlib import Path
-from utils import format_result, link_subtitles, Data
+from pdfplucker.utils import format_result, link_subtitles, Data
 from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
@@ -21,13 +20,69 @@ from docling.datamodel.pipeline_options import (
     EasyOcrOptions,
 )
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('pdf_processing.log')
+    ]
+)
+logger = logging.getLogger(__name__)
+
 _converter_cache = {} # caching converters for memory efficiency
+
+# Memory management functions
+def get_memory_usage():
+    """Get current memory usage in MB"""
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / (1024 * 1024)
+
+def force_gc():
+    """Force garbage collection to free memory"""
+    before_mem = get_memory_usage()
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6').malloc_trim(0)
+    except:
+        pass  # not always available
+    
+    after_mem = get_memory_usage()
+    freed = before_mem - after_mem
+    if freed > 10:  # Only log if significant memory was freed
+        logger.debug(f"Memory freed by GC: {freed:.2f} MB")
+
+def check_pdf_size(filepath):
+    """Check if PDF is too large to process safely"""
+    try:
+        file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
+        
+        # Get available system memory
+        available_memory = psutil.virtual_memory().available / (1024 * 1024)
+        
+        # Calculate size threshold based on available memory
+        # We need approximately 10x the PDF size in memory
+        size_threshold = min(100, available_memory / 10)
+        
+        if file_size_mb > size_threshold:
+            logger.warning(f"PDF {os.path.basename(filepath)} is {file_size_mb:.2f}MB, which may cause memory issues")
+            return False, file_size_mb
+        return True, file_size_mb
+    except Exception as e:
+        logger.error(f"Error checking PDF size: {e}")
+        return False, 0
 
 def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list = ['es', 'pt'], force_ocr: bool = False) -> DocumentConverter:
     ''' Create a DocumentConverter object with the pipeline options configured''' 
 
     # check low memory mode
     low_mem = os.environ.get('LOW_MEMORY', '0') == '1'
+    memory_pct = psutil.virtual_memory().percent
+    if memory_pct > 70:  # Dynamic low memory mode 
+        low_mem = True
+        logger.warning(f"System memory usage high ({memory_pct}%). Enforcing low memory mode.")
 
     # Using cache to avoid repeatedly loading the same model
     cache_key = f"{device}_{num_threads}_{'_'.join(ocr_lang)}_{force_ocr}"
@@ -42,11 +97,19 @@ def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list
     pipeline_options.generate_picture_images = True
     pipeline_options.do_picture_classification = True
     pipeline_options.do_formula_enrichment = True
-    pipeline_options.images_scale = 0.5 if low_mem else 1.0
+    
+    # Aggressive scaling for low memory mode
+    pipeline_options.images_scale = 0.3 if low_mem else 0.5
+    
+    # Set page size limit in low memory mode
+    if low_mem:
+        pipeline_options.page_size_limit = 5000  # Limit page dimensions
+    
     if force_ocr:
-    # Rapid OCR or Easy OCr
+        # Rapid OCR or Easy OCr
         ocr_options = EasyOcrOptions(force_full_page_ocr=True, lang=ocr_lang)
         pipeline_options.ocr_options = ocr_options
+    
     # Device acceleration
     device_type = AcceleratorDevice.CUDA if device.upper() == 'CUDA' else AcceleratorDevice.CPU if device.upper() == 'CPU' else AcceleratorDevice.AUTO if device.upper() == 'AUTO' else AcceleratorDevice.AUTO
     
@@ -63,22 +126,25 @@ def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list
     _converter_cache[cache_key] = converter
     return converter
 
-def force_gc():
-    """Force garbage collection to free memory"""
-    gc.collect()
-    try:
-        import ctypes
-        ctypes.CDLL('libc.so.6').malloc_trim(0)
-    except:
-        pass # not always available
-
 def process_pdf(source: str, output: str, image_path: str | None, doc_converter: DocumentConverter, separate_folders: bool | None = False, markdown: bool = False, progress_bar = None) -> bool:
     """Function to process a single PDF file utilizing Docling"""
 
-    low_memory_mode = os.environ.get('LOW_MEMORY', '0') == '1'
+    low_memory_mode = os.environ.get('LOW_MEMORY', '0') == '1' or psutil.virtual_memory().percent > 70
+    start_time = time.time()
+    
+    # Record initial memory
+    initial_memory = get_memory_usage()
+    logger.debug(f"Starting PDF processing with {initial_memory:.2f}MB memory")
 
     filename = os.path.basename(source)
     base_filename = os.path.splitext(filename)[0]
+    
+    # Check if PDF is too large to process safely
+    safe_to_process, file_size_mb = check_pdf_size(source)
+    if not safe_to_process:
+        if file_size_mb > 50:  # Very large files
+            logger.error(f"PDF too large to process safely: {filename} ({file_size_mb:.2f}MB)")
+            return False
 
     try:
         if separate_folders:
@@ -93,7 +159,7 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
 
         image_folder_path = Path(image_folder)
 
-        print(f"\033[33mProcessing: {filename}\033[0m")
+        logger.info(f"Processing: {filename}")
 
         data: Data = {
             "metadata": {},
@@ -103,74 +169,152 @@ def process_pdf(source: str, output: str, image_path: str | None, doc_converter:
             "subtitles" : []
         }
 
+        # Use PyMuPDF (fitz) for extracting metadata - lightweight operation
         with fitz.open(source) as doc:
+            # Check number of pages for large documents
+            num_pages = len(doc)
+            if num_pages > 100 and low_memory_mode:
+                logger.warning(f"Large document detected: {filename} has {num_pages} pages")
+                if num_pages > 300:  # Very large documents
+                    logger.error(f"Document too large to process in low memory mode: {filename}")
+                    return False
+                
             data["metadata"] = doc.metadata
             data["metadata"]["filename"] = filename
-
-
-        # Converting the source file to a Docling document
-        conv: ConversionResult = doc_converter.convert(source)
-        format_result(conv, data, base_filename, image_folder_path)
-        link_subtitles(data)
-
-        if low_memory_mode:
-            # Free memory after processing each file in low memory mode
+            data["metadata"]["pages"] = num_pages
+            
+            # Early cleanup
+            doc.close()
+        
+        # Check memory before conversion
+        if get_memory_usage() > initial_memory + 500:  # If we've already used 500MB before conversion
             force_gc()
-            del conv
+        
+        # Converting the source file to a Docling document - memory intensive part
+        try:
+            if file_size_mb > 20:  # For larger files, monitor memory during conversion
+                logger.debug(f"Starting conversion of larger file: {filename}")
+            
+            # Progressive Processing for large files
+            if num_pages > 100 and low_memory_mode:
+                # For large files, adapt the options to be more memory efficient
+                temp_converter = create_converter(
+                    device='CPU',  # Force CPU for large files
+                    num_threads=2,  # Limit threads
+                    force_ocr=False  # Disable forced OCR for large files
+                )
+                conv: ConversionResult = temp_converter.convert(source)
+                del temp_converter
+            else:
+                conv: ConversionResult = doc_converter.convert(source)
+                
+            # Monitor memory after conversion
+            post_conv_memory = get_memory_usage()
+            memory_used = post_conv_memory - initial_memory
+            logger.debug(f"Conversion used {memory_used:.2f}MB for {filename}")
+            
+            format_result(conv, data, base_filename, image_folder_path)
+            link_subtitles(data)
+            
+            # Free memory after formatting
+            if low_memory_mode or memory_used > 200:
+                del conv
+                force_gc()
 
-        # Save Markdown if asked
+        except MemoryError:
+            logger.error(f"Out of memory while converting {filename}")
+            force_gc()
+            return False
+            
+        # Save Markdown if asked - after clearing conversion memory
         if markdown:
-            md_filename = result.replace('.json', '.md')
-            conv.document.save_as_markdown(Path(md_filename), image_mode=ImageRefMode.EMBEDDED)
+            try:
+                md_filename = result.replace('.json', '.md')
+                conv.document.save_as_markdown(Path(md_filename), image_mode=ImageRefMode.EMBEDDED)
+            except Exception as md_error:
+                logger.error(f"Error saving markdown: {md_error}")
         
         # Save JSON
         with open(Path(result), 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
+        processing_time = time.time() - start_time
+        logger.info(f"Successfully processed {filename} in {processing_time:.2f}s")
         return True
     
     except (fitz.FileDataError, fitz.EmptyFileError) as e:
-        print(f"\033[31mFailed to process {filename}: {e}\033[0m")
+        logger.error(f"Failed to process {filename}: {e}")
         return False
     except IOError as e:      
-        print(f"\033[31mI/O error while processing: {e}\033[0m")
+        logger.error(f"I/O error while processing {filename}: {e}")
         return False
     except Exception as e:    
         import traceback
-        traceback.print_exc()
-        print(f"\033[31mAn error has occurred: {e}\033[0m") 
+        logger.error(f"Error processing {filename}: {str(e)}\n{traceback.format_exc()}")
         return False
     
     finally:
+        # Clean up resources regardless of outcome
         try:
-            if 'conv' in locals():
-                del conv
-            if 'data' in locals():
-                del data
-            force_gc() # more agressive garbage collection
+            locals_copy = dict(locals())
+            for var_name in ['conv', 'data']:
+                if var_name in locals_copy:
+                    del locals_copy[var_name]
+                    
+            force_gc()  # Aggressive garbage collection
 
             # Monitor memory and handle critical situations
-            if psutil.virtual_memory().percent > 80:
-                print(f"\033[31mMemory usage high! Forcing garbage collection...\033[0m")
+            current_memory = get_memory_usage()
+            memory_change = current_memory - initial_memory
+            
+            if memory_change > 100:  # If we're using 100MB more than when we started
+                logger.warning(f"Memory usage grew by {memory_change:.2f}MB during processing {filename}")
                 force_gc()
-                time.sleep(1) # Give some time for the garbage collector to work
+                
+            if psutil.virtual_memory().percent > 85:
+                logger.critical(f"System memory critically low! ({psutil.virtual_memory().percent}%)")
+                force_gc()
+                time.sleep(2)  # Give more time for memory to be reclaimed
 
         except Exception as e:
-            print(f"\033[31mAn error has occurred while trying to free memory: {e}\033[0m")
+            logger.error(f"Error during cleanup: {e}")
 
 def _worker(source, output, image_path, doc_converter, separate_folders, markdown, queue):
     try:
+        # Set process name for better monitoring
+        multiprocessing.current_process().name = f"PDF-Worker-{os.path.basename(source)}"
+        
+        # Check available memory before starting
+        if psutil.virtual_memory().percent > 90:
+            logger.critical(f"Worker has insufficient memory to start processing {os.path.basename(source)}")
+            queue.put((False, "Insufficient memory"))
+            return
+            
         success = process_pdf(source, output, image_path, doc_converter, separate_folders, markdown)
-        queue.put(success)
+        queue.put((success, None))
     except Exception as e:
-        print(f"\033[31mNon treated error at _worker: {e}\033[0m")
-        queue.put(False)
+        logger.error(f"Worker error processing {os.path.basename(source)}: {e}")
+        queue.put((False, str(e)))
 
 def process_with_timeout(source: str, output: str, image_path: str, doc_converter: DocumentConverter, separate_folders: bool = False, timeout: int = 600, markdown:bool = False):
     """ Process a single PDF with safety timeout """
 
+    filename = os.path.basename(source)
+    
+    # Adjust timeout based on file size
+    _, file_size_mb = check_pdf_size(source)
+    if file_size_mb > 10:
+        # For larger files, allow more time (roughly 1 minute per 10MB, capped)
+        adjusted_timeout = min(timeout * 2, timeout + int(file_size_mb * 6))
+        logger.info(f"Adjusted timeout to {adjusted_timeout}s for {file_size_mb:.1f}MB file {filename}")
+        timeout = adjusted_timeout
+
     if multiprocessing.get_start_method() != 'spawn':
-        multiprocessing.set_start_method('spawn', force=True)
+        try:
+            multiprocessing.set_start_method('spawn', force=True)
+        except RuntimeError:
+            # Already set, ignore
+            pass
 
     queue = multiprocessing.Queue()
 
@@ -183,41 +327,80 @@ def process_with_timeout(source: str, output: str, image_path: str, doc_converte
     process.join(timeout)
 
     if process.is_alive():
-        filename = os.path.basename(source)
-        print(f"\033[31mTimeout after {timeout}s! Killing process for {filename}\033[0m")
+        logger.error(f"Timeout after {timeout}s! Killing process for {filename}")
         process.terminate()
-        process.join()
+        process.join(2)  # Give it 2 seconds to terminate
+        if process.is_alive():
+            process.kill()  # Force kill if still alive
         return False
     
     try:
         if not queue.empty():
-            return queue.get()
+            success, error = queue.get()
+            if not success and error:
+                logger.error(f"Process for {filename} failed: {error}")
+            return success
         return False
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error retrieving result for {filename}: {e}")
         return False
+
+def get_skip_files(output_dir):
+    """Get list of already processed files to skip when resuming"""
+    skip_files = set()
+    try:
+        if os.path.exists(output_dir):
+            for file in os.listdir(output_dir):
+                if file.endswith('.json'):
+                    skip_files.add(os.path.splitext(file)[0])
+    except Exception as e:
+        logger.error(f"Error getting skip files: {e}")
+    return skip_files
 
 def process_batch(source: str | Path, output: str, image_path: str | None, separate_folders: bool = False, max_workers: int = 4, timeout:int = 600, device: str = 'AUTO', markdown: bool = False, force_ocr: bool = False, skip_files: set = None, amount: int = None) -> dict:
-    """ Process a batch of PDFs at a time in paralel """
+    """ Process a batch of PDFs at a time in parallel """
 
     # Check for low memory mode
-    low_memory_mode = os.environ.get('LOW_MEMORY', '0') == '1'
+    system_memory = psutil.virtual_memory()
+    available_memory_gb = system_memory.available / (1024**3)
+    memory_critical = system_memory.percent > 80
     
-    # Reduce workers in low memory mode
-    if low_memory_mode and max_workers > 2:
-        max_workers = max(2, max_workers // 2)  # Reduce workers but keep at least 2
-        print("\033[33mLow memory mode: Reduced worker count to {}\033[0m".format(max_workers))
-
+    low_memory_mode = os.environ.get('LOW_MEMORY', '0') == '1' or memory_critical or available_memory_gb < 4
+    
+    if low_memory_mode:
+        os.environ['LOW_MEMORY'] = '1'  # Set for child processes
+        
+    # Adjust workers based on available memory
+    if available_memory_gb < 8:
+        max_workers = max(1, min(max_workers, int(available_memory_gb)))
+        logger.warning(f"Limited workers to {max_workers} due to available memory ({available_memory_gb:.1f}GB)")
+    elif low_memory_mode and max_workers > 2:
+        max_workers = max(1, max_workers // 2)  # Reduce workers but keep at least 1
+        logger.warning(f"Low memory mode: Reduced worker count to {max_workers}")
 
     # path config
     if not separate_folders and image_path is None:
         image_path = f"{output}/images"
+    
+    # Create output directories
+    os.makedirs(output, exist_ok=True)
+    if not separate_folders:
+        os.makedirs(image_path, exist_ok=True)
 
     # create the doc_converter
-    doc_converter = create_converter(device=device, num_threads=max_workers, force_ocr=force_ocr)
+    doc_converter = create_converter(device=device, num_threads=max(2, max_workers//2), force_ocr=force_ocr)
+
+    # Get list of already processed files
+    if skip_files is None:
+        skip_files = get_skip_files(output)
+        if skip_files:
+            logger.info(f"Found {len(skip_files)} already processed files to skip")
 
     # create the list of files
     pdf_files = []
     if Path(source).is_dir():
+        # Sort files by size to process smaller files first
+        file_info = []
         for file in os.listdir(source):
             if file.lower().endswith('.pdf'):
                 file_path = os.path.join(source, file)
@@ -225,75 +408,117 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
                 # Skip files that have already been processed if resuming
                 if skip_files and file_stem in skip_files:
                     continue
-                pdf_files.append(file_path)
+                try:
+                    file_size = os.path.getsize(file_path)
+                    file_info.append((file_path, file_size))
+                except Exception as e:
+                    logger.error(f"Error getting file size for {file}: {e}")
+                    continue
+                    
+        # Sort by file size (smallest first)
+        file_info.sort(key=lambda x: x[1])
+        pdf_files = [info[0] for info in file_info]
     else:
         # Redundancy for safety
-        if source.suffix.lower() == '.pdf':
+        if str(source).lower().endswith('.pdf'):
             pdf_files.append(str(source))
 
     if amount is not None and amount > 0:
         pdf_files = pdf_files[:amount]
 
     total_docs = len(pdf_files)
-    print(f"\033[33mTotal amount of documents to be processed: {total_docs}\033[0m")
+    logger.info(f"Total documents to process: {total_docs}")
 
     # create the metrics
     metrics = {
-        'initial_time' : time.time(),
+        'initial_time': time.time(),
         'elapsed_time': 0,
-        'total_docs' : total_docs,
+        'total_docs': total_docs,
         'processed_docs': 0,
         'failed_docs': 0,
         'timeout_docs': 0,
-        'success_rate' : 0.1,
+        'success_rate': 0,
+        'memory_peak': 0,
         'fails': []
     }
 
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures  = {
-            executor.submit(
-                process_with_timeout,
-                pdf_file,
-                str(output),
-                str(image_path),
-                doc_converter,
-                separate_folders,
-                timeout,
-                markdown
-            ) : pdf_file for pdf_file in pdf_files
-        }
+    # Track peak memory usage
+    memory_tracker = psutil.Process(os.getpid())
+    
+    # Process in smaller batches to manage memory better
+    batch_size = max(1, max_workers * 2)  # Process 2x the number of workers at a time
+    for i in range(0, len(pdf_files), batch_size):
+        batch = pdf_files[i:i+batch_size]
+        logger.info(f"Processing batch {i//batch_size + 1}/{(len(pdf_files) + batch_size - 1)//batch_size}")
+        
+        # Check if we should pause before starting a new batch
+        if i > 0 and psutil.virtual_memory().percent > 75:
+            logger.warning("Memory pressure detected, pausing before next batch")
+            force_gc()
+            time.sleep(5)  # Pause to let memory settle
+        
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    process_with_timeout,
+                    pdf_file,
+                    str(output),
+                    str(image_path),
+                    doc_converter,
+                    separate_folders,
+                    timeout,
+                    markdown
+                ): pdf_file for pdf_file in batch
+            }
 
-        for future in as_completed(futures):
-            pdf_file = futures[future]
-            try: 
-                success = future.result()
-                if success:
-                    metrics['processed_docs'] += 1
-                    print(f"\033[32mSuccessfully processed {os.path.basename(pdf_file)}\033[0m")
-                else:
-                    metrics['processed_docs'] += 1
+            for future in as_completed(futures):
+                pdf_file = futures[future]
+                try: 
+                    success = future.result()
+                    if success:
+                        metrics['processed_docs'] += 1
+                        logger.info(f"Successfully processed {os.path.basename(pdf_file)}")
+                    else:
+                        metrics['processed_docs'] += 1
+                        metrics['failed_docs'] += 1
+                        metrics['fails'].append({
+                            'file': pdf_file,
+                            'error': 'unknown'
+                        })
+                        logger.error(f"Failed to process {os.path.basename(pdf_file)}")
+                except TimeoutError:
+                    logger.error(f"Timeout reached for {os.path.basename(pdf_file)}")
+                    metrics['timeout_docs'] += 1
+                    metrics['fails'].append({
+                        'file': pdf_file,
+                        'error': "Timeout reached"
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing {os.path.basename(pdf_file)}: {e}")
                     metrics['failed_docs'] += 1
                     metrics['fails'].append({
-                        'file' : pdf_file,
-                        'error': 'unknown'
+                        'file': pdf_file,
+                        'error': str(e)
                     })
-                    print(f"\033[31mFailed to process {os.path.basename(pdf_file)}\033[0m")
-            except TimeoutError:
-                print(f"\033[31mTimeout reached for {os.path.basename(pdf_file)}\033[0m")
-                metrics['timeout_docs'] += 1
-                metrics['fails'].append({
-                    'file' : pdf_file,
-                    'error': "Timeout reached"
-                })
+                
+                # Track memory usage periodically
+                current_memory = memory_tracker.memory_info().rss / (1024 * 1024)
+                metrics['memory_peak'] = max(metrics['memory_peak'], current_memory)
+                
+        # After each batch, force memory cleanup
+        force_gc()
+        
+        # Save intermediate metrics
+        if i + batch_size < len(pdf_files):
+            intermediate_metrics = dict(metrics)
+            intermediate_metrics['elapsed_time'] = time.time() - metrics['initial_time']
+            intermediate_metrics['success_rate'] = ((metrics['processed_docs'] - metrics['failed_docs'] - metrics['timeout_docs']) / metrics['processed_docs']) * 100 if metrics['processed_docs'] > 0 else 0
+            
+            with open(os.path.join(output, 'intermediate_metrics.json'), 'w') as f:
+                json.dump(intermediate_metrics, f, indent=2)
 
-            except Exception as e:
-                print(f"\033[31mAn error occurred while processing {os.path.basename(pdf_file)}: {e}\033[0m")
-                metrics['failed_docs'] += 1
-                metrics['fails'].append({
-                    'file' : pdf_file,
-                    'error': str(e)
-                })
     # Clean up the converter
+    _converter_cache.clear()
     del doc_converter
     force_gc()
 
@@ -302,6 +527,10 @@ def process_batch(source: str | Path, output: str, image_path: str | None, separ
     metrics['elapsed_time'] = total_time
     metrics['success_rate'] = ((total_docs - metrics['failed_docs'] - metrics['timeout_docs']) / total_docs) * 100 if total_docs > 0 else 0
 
-    print(f"\033[32mParsing process has finished!\033[0m")
+    logger.info(f"Parsing process finished! Success rate: {metrics['success_rate']:.1f}%, Time: {total_time:.1f}s")
+    
+    # Save final metrics
+    with open(os.path.join(output, 'final_metrics.json'), 'w') as f:
+        json.dump(metrics, f, indent=2)
+        
     return metrics
-
