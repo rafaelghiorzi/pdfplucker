@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 <div style="display: flex; justify-content: center; margin: 20px">
-  <img src="pdfplucker.png" alt="PdfPlucker (AI generated)" width="300">
+  <img src="logo.png" alt="PdfPlucker (AI generated)" width="300">
 </div>
 
 PdfPlucker is a powerful wrapper for the Docling library, specifically designed for batch processing PDF files. It provides users with fine-grained control over processing parameters and output configuration through a simple command-line interface.
