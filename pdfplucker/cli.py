@@ -150,13 +150,13 @@ def validate_args(args: argparse.Namespace):
             print(f"\033[33mImages path created: {args.images}\033[0m")
 
     if args.device.upper() == 'CUDA':
-        if not torch.cuda.is_available():
-            return False, "CUDA is not available on this device. Please use CPU or AUTO."
-    elif args.device.upper() == 'AUTO':
-        if torch.cuda.is_available():
-            args.device = 'CUDA'
-        else:
+        try:
+            if not torch.cuda.is_available():
+                return False, "CUDA is not available on this device. Please use CPU or AUTO."
+        except Exception as e:
+            print(f"\033[33mWarning: Error checking CUDA availability: {e}\033[0m")
             args.device = 'CPU'
+            print("\033[33mFalling back to CPU processing\033[0m")
 
     mem = psutil.virtual_memory()
     if mem.percent > 80:

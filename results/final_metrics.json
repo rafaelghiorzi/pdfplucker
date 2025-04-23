@@ -1,0 +1,20 @@
+{
+  "initial_time": 1745432882.4437435,
+  "elapsed_time": 15.797200918197632,
+  "total_docs": 2,
+  "processed_docs": 2,
+  "failed_docs": 2,
+  "timeout_docs": 0,
+  "success_rate": 0.0,
+  "memory_peak": 0,
+  "fails": [
+    {
+      "file": "/home/rafael-dias/Downloads/Lista de Exercicio 01 - LE01 - SegComp.pdf",
+      "error": "Processing error"
+    },
+    {
+      "file": "/home/rafael-dias/Downloads/Aula_Kanban in Practice.pdf",
+      "error": "Processing error"
+    }
+  ]
+}

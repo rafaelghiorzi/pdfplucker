@@ -45,8 +45,8 @@ def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list
     ''' Create a DocumentConverter object with the pipeline options configured''' 
     pipeline_options = PdfPipelineOptions()
     pipeline_options.do_ocr = True
-    pipeline_options.do_table_structure = True
-    pipeline_options.table_structure_options.do_cell_matching = True 
+    pipeline_options.do_table_structure = False
+    # pipeline_options.table_structure_options.do_cell_matching = True 
     pipeline_options.ocr_options.lang = ocr_lang
     pipeline_options.generate_picture_images = True
     pipeline_options.do_picture_classification = True

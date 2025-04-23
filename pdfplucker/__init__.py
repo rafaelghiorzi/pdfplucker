@@ -3,7 +3,7 @@ pdfplucker - a powerful wrapper for the Docling library
 """
 # __init__.py
 
-__version__ = "0.3.7"
+__version__ = "0.3.8"
 __author__ = "Rafael Ghiorzi"
 __email__ = "rafael.ghiorzi@gmail.com"
 
