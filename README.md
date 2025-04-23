@@ -27,11 +27,6 @@ PdfPlucker requires Python 3.12 or higher. To install, simply run the following 
 pip install pdfplucker
 ```
 
-if you want GPU support, run:
-
-```bash
-pip install pdfplucker[gpu]
-```
 _Note: For GPU support, you may need to install the PyTorch version that matches your CUDA version._
 _Check your CUDA version with `nvidia-smi` and visit https://pytorch.org/get-started/locally/ for instructions_
 
