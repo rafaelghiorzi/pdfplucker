@@ -1,5 +1,6 @@
 # utils.py
-
+from concurrent.futures import ProcessPoolExecutor
+import multiprocessing
 from docling.datamodel.document import ConversionResult
 from docling_core.types.doc import (
     PictureItem,
@@ -9,6 +10,8 @@ from docling_core.types.doc import (
 )
 from typing import TypedDict, List, Dict, Any
 import warnings
+import logging
+import os
 
 class Data(TypedDict):
     metadata: Dict[str, Any]
@@ -143,3 +146,80 @@ def link_subtitles(data: Data) -> None:
         if 'tables' in locals():
             del tables
 
+def get_safe_executor(max_workers=None):
+    try:
+        multiprocessing.set_start_method('spawn', force=True)
+    except RuntimeError:
+        # Method might already be set
+        pass
+        
+    return ProcessPoolExecutor(max_workers=max_workers)
+
+class ColorfulFormatter(logging.Formatter):
+    COLOURS = {
+        'DEBUG': '\033[94m',  # Blue
+        'INFO': '\033[92m',   # Green
+        'WARNING': '\033[93m',  # Yellow
+        'ERROR': '\033[91m',  # Red
+        'CRITICAL': '\033[95m',  # Magenta
+    }
+    RESET = '\033[0m'  # Reset to default color
+    TIME_COLOR = '\033[92m'  # Cyan
+
+    def format(self, record):
+        log_color = self.COLOURS.get(record.levelname, self.RESET)
+        record.levelname = f"{log_color}{record.levelname}{self.RESET}"
+        
+        original_time = self.formatTime(record, self.datefmt)
+        record.asctime = f"{self.TIME_COLOR}{original_time}{self.RESET}"
+   
+        return super().format(record)
+
+def setup_logging(level=logging.INFO):
+    # Create formatters
+    detailed_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    simple_formatter = ColorfulFormatter('%(asctime)s - %(levelname)s - %(message)s')
+    
+    # Create file handlers
+    log_dir = os.path.join(os.getcwd(), 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+    
+    pdfplucker_file = logging.FileHandler(os.path.join(log_dir, 'pdfplucker.log'))
+    pdfplucker_file.setFormatter(detailed_formatter)
+    
+    # Create console handler
+    console = logging.StreamHandler()
+    console.setFormatter(simple_formatter)
+    
+    # Create a third-party log file for docling
+    third_party_file = logging.FileHandler(os.path.join(log_dir, 'dependencies.log'))
+    third_party_file.setFormatter(detailed_formatter)
+    third_party_file.setLevel(logging.DEBUG)  # All levels
+    
+    # Configure the root logger (for third-party libraries)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)  # All levels
+    
+    # Remove any existing handlers to avoid duplicates
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
+    root_logger.addHandler(third_party_file)
+    
+    # Configure your package's logger
+    pdfplucker_logger = logging.getLogger('pdfplucker')
+    pdfplucker_logger.setLevel(level)
+    
+    # Remove any existing handlers to avoid duplicates
+    for handler in pdfplucker_logger.handlers[:]:
+        pdfplucker_logger.removeHandler(handler)
+    
+    pdfplucker_logger.addHandler(pdfplucker_file)
+    pdfplucker_logger.addHandler(console)
+    
+    # Make sure your logger doesn't propagate to root
+    pdfplucker_logger.propagate = False
+    
+    return pdfplucker_logger
+
+logger = setup_logging()

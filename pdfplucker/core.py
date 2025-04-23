@@ -1,6 +1,13 @@
 # pdfplucker/core.py
+import multiprocessing
 from pathlib import Path
 from pdfplucker.processor import process_batch, process_pdf, create_converter
+
+try:
+    multiprocessing.set_start_method("spawn", force=True)
+except RuntimeError:
+    # If the start method is already set, we can ignore the error
+    pass
 
 def pdfplucker(
     source: str | Path,
@@ -58,6 +65,7 @@ def pdfplucker(
         image_path = Path(str(image_path).replace('\\', '/'))
     
     if source_path.is_file():
+        print(f"Processing single PDF: {source_path}")
         # Process single PDF
         doc_converter = create_converter(
             device=device.upper(),
@@ -82,6 +90,7 @@ def pdfplucker(
         )
         return sucess
     else:
+        print(f"Processing batch of PDFs in {source_path}")
         # Process batch of PDFs
         return process_batch(
             source=source_path,

@@ -1,4 +1,4 @@
-# Version 0.3.7 (Modified)
+# Version 0.3.8 (0.3.7 but Modified)
 
 import os
 import gc
@@ -8,8 +8,8 @@ import time
 import logging
 import multiprocessing  # Changed back to multiprocessing
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError  # Changed back to ProcessPoolExecutor
-from pdfplucker.utils import format_result, link_subtitles, Data
+from concurrent.futures import as_completed, TimeoutError
+from pdfplucker.utils import format_result, link_subtitles, get_safe_executor, logger, Data
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import ConversionResult
@@ -20,16 +20,6 @@ from docling.datamodel.pipeline_options import (
     PdfPipelineOptions,
     EasyOcrOptions,
 )
-
-logging.basicConfig(
-    level=logging.INFO,
-    format = '%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('pdfplucker_process.log')
-    ]
-)
-logger = logging.getLogger(__name__)
 
 def convert_paths_to_strings(obj):
     """Recursively convert all Path objects to strings in a nested structure"""
@@ -276,7 +266,7 @@ def process_batch(
     }
 
     # Switch back to ProcessPoolExecutor
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+    with get_safe_executor(max_workers=max_workers) as executor:
         futures = {}
         for pdf_file in pdf_files:
             future = executor.submit(

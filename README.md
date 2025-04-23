@@ -21,7 +21,7 @@ PdfPlucker is a powerful wrapper for the Docling library, specifically designed 
 
 ## Installation
 
-PdfPlucker requires Python 3.12 or higher. To install, simply run the following command:
+PdfPlucker requires Python 3.12 or higher and Torch 2.6.0 or higher. To install, simply run the following command:
 
 ```bash
 pip install pdfplucker
