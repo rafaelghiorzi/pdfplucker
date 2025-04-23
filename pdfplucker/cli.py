@@ -6,7 +6,7 @@ import time
 import torch
 import psutil
 from pathlib import Path
-from core import pdfplucker
+from pdfplucker.core import pdfplucker
 
 def create_parser():
     '''
@@ -241,8 +241,8 @@ def main():
     print(f"Timeout: {args.timeout} seconds")
     print(f"Save markdown: {'yes' if args.markdown else 'no'}")
     print(f"Folder separation: {'yes' if args.folder_separation else 'no'}")
-    print(f"Resume: {'yes' if args.resume else 'no'}")  
     print(f"Images path: {args.images if args.images else 'not used'}")
+    print(f"Amount of files to process: {args.amount if args.amount > 0 else 'all'}")
     print("=" * 50)
     print("Starting...")
 
@@ -286,7 +286,6 @@ def main():
     
     except KeyboardInterrupt:
         print("\033[31mProcess interrupted by user\033[0m")
-        print("\033[31mYou can resume the process later using the --resume flag\033[0m")
         sys.exit(1)
     except Exception as e:
         print(f"\033[31mAn error occurred: {e}\033[0m")

@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from pdfplucker.utils import format_result, link_subtitles, Data
-from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
+from concurrent.futures import as_completed, TimeoutError
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import ConversionResult
@@ -30,8 +30,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def force_gc():
-    gc.collect()
+def convert_paths_to_strings(obj):
+    """Recursively convert all Path objects to strings in a nested structure"""
+    if isinstance(obj, Path):
+        return str(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_paths_to_strings(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_paths_to_strings(item) for item in obj]
+    else:
+        return obj
 
 def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list = ['es', 'pt'], force_ocr: bool = False) -> DocumentConverter:
     ''' Create a DocumentConverter object with the pipeline options configured''' 
@@ -55,7 +63,7 @@ def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list
     # Device acceleration
     device_type = AcceleratorDevice.CUDA if device.upper() == 'CUDA' else AcceleratorDevice.CPU if device.upper() == 'CPU' else AcceleratorDevice.AUTO if device.upper() == 'AUTO' else AcceleratorDevice.AUTO
     pipeline_options.accelerator_options = AcceleratorOptions(num_threads=num_threads, device=device_type)
-
+    
     converter = DocumentConverter(
         format_options={
             InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
@@ -159,7 +167,7 @@ def process_pdf(
             data["metadata"]["filename"] = filename
             data["metadata"]["pages"] = num_pages
 
-        conv: ConversionResult = doc_converter.convert(str(source))
+        conv: ConversionResult = doc_converter.convert(source)
         format_result(conv, data, base_filename, image_folder)
         link_subtitles(data)
 
@@ -172,9 +180,7 @@ def process_pdf(
                 logger.error(f"Error saving markdown: {md_error}")
 
         # transform Paths into strings
-        for key, value in data.items():
-            if isinstance(value, Path):
-                data[key] = str(value)
+        data = convert_paths_to_strings(data)
 
         with open(result, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
@@ -185,7 +191,7 @@ def process_pdf(
 
     except MemoryError:
         logger.error(f"Out of memory while converting {filename}")
-        force_gc()
+        gc.collect()
         return False
     except (fitz.FileDataError, fitz.EmptyFileError) as e:
         logger.error(f"Failed to process {filename}: {e}")
@@ -199,7 +205,7 @@ def process_pdf(
         return False
     
     finally:
-        force_gc()  # Aggressive garbage collection
+        gc.collect()  # Aggressive garbage collection
         try:
             del conv
             del data
@@ -298,7 +304,7 @@ def process_batch(
                     'error': str(e)
                 })
 
-            force_gc()
+            gc.collect()
 
             if metrics['processed_docs'] % 5 == 0:
                 # Save intermediate metrics every 5 files
@@ -306,7 +312,7 @@ def process_batch(
 
     # Finalize metrics
     del doc_converter
-    force_gc()
+    gc.collect()
     _update_metrics(metrics, output, final=True)
     logger.info(f"Processing concluded, sucess rate: {metrics['success_rate']:.1f}%, total time: {metrics['elapsed_time']:.1f}s")
 
@@ -317,10 +323,7 @@ def _update_metrics(metrics: dict, output_dir: str, final: bool = False) -> None
     metrics['elapsed_time'] = time.time() - metrics['initial_time']
 
     # Convert Paths to string
-    for key, value in metrics.items():
-        if isinstance(value, Path):
-            value = str(value)
-            metrics[key] = value
+    metrics = convert_paths_to_strings(metrics)
 
     processed = metrics['processed_docs']
     if processed > 0:

@@ -52,10 +52,10 @@ def pdfplucker(
     image_path = Path(images) if images else None
 
     # Normalize paths for Windows compatibility
-    #source_path = Path(str(source_path).replace('\\', '/'))
-    #output_path = Path(str(output_path).replace('\\', '/'))
-    #if image_path:
-    #    image_path = Path(str(image_path).replace('\\', '/'))
+    source_path = Path(str(source_path).replace('\\', '/'))
+    output_path = Path(str(output_path).replace('\\', '/'))
+    if image_path:
+        image_path = Path(str(image_path).replace('\\', '/'))
     
     if source_path.is_file():
         # Process single PDF
