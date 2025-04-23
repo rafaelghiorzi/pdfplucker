@@ -1,14 +1,15 @@
+# Version 0.3.7 (Modified)
+
 import os
 import gc
 import json
 import fitz
 import time
 import logging
-import threading
+import multiprocessing  # Changed back to multiprocessing
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
+from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError  # Changed back to ProcessPoolExecutor
 from pdfplucker.utils import format_result, link_subtitles, Data
-from concurrent.futures import as_completed, TimeoutError
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import ConversionResult
@@ -45,8 +46,8 @@ def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list
     ''' Create a DocumentConverter object with the pipeline options configured''' 
     pipeline_options = PdfPipelineOptions()
     pipeline_options.do_ocr = True
-    pipeline_options.do_table_structure = False
-    # pipeline_options.table_structure_options.do_cell_matching = True 
+    pipeline_options.do_table_structure = True
+    pipeline_options.table_structure_options.do_cell_matching = True 
     pipeline_options.ocr_options.lang = ocr_lang
     pipeline_options.generate_picture_images = True
     pipeline_options.do_picture_classification = True
@@ -72,6 +73,22 @@ def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list
 
     return converter
 
+# Reintroducing the worker function from 0.3.6
+def _worker(source, output, image_path, doc_converter, separate_folders, markdown, queue):
+    try:
+        success = process_pdf(
+            source,
+            output,
+            image_path,
+            doc_converter,
+            separate_folders,
+            markdown
+        )
+        queue.put(success)
+    except Exception as e:
+        logger.error(f"Non treated error at _worker: {e}")
+        queue.put(False)
+
 def process_with_timeout(
     source: Path,
     output: Path,
@@ -84,43 +101,42 @@ def process_with_timeout(
     """ Process a single PDF with safety timeout """
     """ Returns True if successful, False otherwise """
 
+    if multiprocessing.get_start_method() != 'spawn':
+        multiprocessing.set_start_method('spawn', force=True)
+
+    queue = multiprocessing.Queue()
+    
     filename = os.path.basename(source)
+    logger.info(f"Starting processing for {filename}")
 
-    result = [False]
-
-    def worker():
-        try:
-            result[0] = process_pdf(
-                source,
-                output,
-                image_path,
-                doc_converter,
-                separate_folders,
-                markdown
-            )
-        except Exception as e:
-            logger.error(f"Worker error processing {filename}: {e}")
-            result[0] = False
-
-    thread = threading.Thread(target=worker)
-    thread.daemon = True # Allow main thread to exit even if worker is running
-
+    process = multiprocessing.Process(
+        target=_worker,
+        args=(source, output, image_path, doc_converter, separate_folders, markdown, queue) 
+    )
+    
     start_time = time.time()
-    thread.start()
+    process.start()
+    process.join(timeout)
 
-    thread.join(float(timeout))
-
-    if thread.is_alive():
+    if process.is_alive():
         logger.error(f"Timeout after {timeout}s! Killing process for {filename}")
+        process.terminate()
+        process.join()
         return False
     
-    time_elapsed = time.time() - start_time
-    if result[0]:
-        logger.info(f"Successfully processed {filename} in {time_elapsed:.2f}s")
-    else:
-        logger.error(f"Failed to process {filename} in {time_elapsed:.2f}s")
-    
-    return result[0]
+    try:
+        if not queue.empty():
+            result = queue.get()
+            time_elapsed = time.time() - start_time
+            if result:
+                logger.info(f"Successfully processed {filename} in {time_elapsed:.2f}s")
+            else:
+                logger.error(f"Failed to process {filename} in {time_elapsed:.2f}s")
+            return result
+        return False
+    except Exception as e:
+        logger.error(f"Error retrieving result: {e}")
+        return False
 
 def process_pdf(
         source: Path,
@@ -133,7 +149,6 @@ def process_pdf(
     """Function to process a single PDF file utilizing Docling"""
 
     conv = None
-    start_time = time.time()
     filename = Path(os.path.basename(source))
     base_filename = Path(os.path.splitext(filename)[0])
     logger.debug(f"Starting PDF processing for {filename}")
@@ -185,8 +200,6 @@ def process_pdf(
         with open(result, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
-        processing_time = time.time() - start_time
-        logger.info(f"Successfully processed {filename} in {processing_time:.2f}s")
         return True
 
     except MemoryError:
@@ -262,7 +275,8 @@ def process_batch(
         'fails': []
     }
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+    # Switch back to ProcessPoolExecutor
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = {}
         for pdf_file in pdf_files:
             future = executor.submit(
@@ -332,4 +346,3 @@ def _update_metrics(metrics: dict, output_dir: str, final: bool = False) -> None
     filename = 'final_metrics.json' if final else 'intermediate_metrics.json'
     with open(os.path.join(output_dir, filename), 'w') as f:
         json.dump(metrics, f, indent=2)
-
