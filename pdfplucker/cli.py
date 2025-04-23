@@ -1,11 +1,12 @@
+# CLI.py
+import os
 import sys
 import argparse
 import time
-import json
 import torch
-
+import psutil
 from pathlib import Path
-from pdfplucker.processor import process_batch, process_pdf, create_converter
+from pdfplucker.core import pdfplucker
 
 def create_parser():
     '''
@@ -74,6 +75,13 @@ def create_parser():
         help='Export the document in an aditional markdown file'
     )
 
+    parser.add_argument(
+        '-a', '--amount',
+        type=int,
+        default=0,
+        help='Amount of files to process'
+    )
+
     return parser
 
 def validate_args(args: argparse.Namespace):
@@ -85,7 +93,7 @@ def validate_args(args: argparse.Namespace):
         return False, f"Source path not found: {args.source}"
     
     # Checking if source, as a directory, contains PDFs
-    if source_path.is_dir():
+    if Path(source_path).is_dir():
         pdf_files = list(source_path.glob("*.pdf"))
         if not pdf_files:
             return False, f"No PDF files found: {args.source}"
@@ -97,6 +105,12 @@ def validate_args(args: argparse.Namespace):
     # Check number of workers
     if args.workers < 1:
         return False, f"Number of workers must be greater than 0: {args.workers}"
+    
+    # Optimize amount of processors
+    cpu_count = psutil.cpu_count(logical=False) or 4
+    if args.workers > cpu_count + 1:
+        print(f"\033[33mWarning: Number of workers is greater than available CPU cores ({cpu_count}). Using {args.workers} instead.\033[0m")
+        print(f"\033[33mConsider using {cpu_count} workers instead.\033[0m")
     
     # Check timeout
     if args.timeout < 1:
@@ -143,47 +157,53 @@ def validate_args(args: argparse.Namespace):
             args.device = 'CUDA'
         else:
             args.device = 'CPU'
+
+    mem = psutil.virtual_memory()
+    if mem.percent > 80:
+        print("\033[33mWarning: Memory usage is high. Consider closing other applications.\033[0m")
+        print
     
     return True, None
 
 def process_single_file(args: argparse.Namespace):
     '''Process a single PDF file and save the results'''
-    source_path = Path(args.source)
-    output_path = Path(args.output)
+    source_path = args.source
+    output_path = args.output
 
     if args.folder_separation:
-        images_path = output_path / source_path.stem / 'images'
-    elif args.images:
-        images_path = Path(args.images)
+        images_path = f"{output_path}/{os.path.basename(source_path)}/images"
     else:
-        images_path = output_path / 'images'
+        images_path = f"{output_path}/images"
     
     # Create the images path if it doesn't exist
-    if not images_path.exists():
-        images_path.mkdir(parents=True, exist_ok=True)
+    if not os.path.exists(images_path):
+        os.mkdir(images_path)
         print(f"\033[32mImages path created: {images_path}\033[0m")
 
-    doc_converter = create_converter(
-        device=args.device.upper(),
-        num_threads=args.workers,
+    start_time = time.time()
+    success = pdfplucker(
+        source=source_path,
+        output=output_path,
+        folder_separation=args.folder_separation,
+        images=images_path,
+        timeout=args.timeout,
+        workers=args.workers,
         force_ocr=args.force_ocr,
+        device=args.device,
+        markdown=args.markdown,
     )
 
-    start_time = time.time()
-    success = process_pdf(
-        str(source_path),
-        str(output_path),
-        str(images_path),
-        doc_converter,
-        args.folder_separation,
-        args.markdown,
-    )
     elapsed_time = time.time() - start_time
     if success:
         print(f"\033[32mProcessing completed successfully in {elapsed_time:.2f} seconds\033[0m")
         print("=" * 50)
         print(f"Output path: {output_path}")
         print(f"Images path: {images_path}")
+
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        memory_mb = memory_info.rss / 1024 / 1024
+        print(f"Memory usage: {memory_mb:.2f} MB")
     else:
         print(f"\033[31mProcessing failed\033[0m")
     return success
@@ -222,6 +242,7 @@ def main():
     print(f"Save markdown: {'yes' if args.markdown else 'no'}")
     print(f"Folder separation: {'yes' if args.folder_separation else 'no'}")
     print(f"Images path: {args.images if args.images else 'not used'}")
+    print(f"Amount of files to process: {args.amount if args.amount > 0 else 'all'}")
     print("=" * 50)
     print("Starting...")
 
@@ -232,27 +253,23 @@ def main():
             sucess =  process_single_file(args)
             sys.exit(0 if sucess else 1)
         else:
-            metrics = process_batch(
+            metrics = pdfplucker(
                 source=args.source,
                 output=args.output,
-                image_path=args.images,
-                separate_folders=args.folder_separation,
-                max_workers=args.workers,
+                folder_separation=args.folder_separation,
+                images=args.images,
                 timeout=args.timeout,
-                device=args.device.upper(),
+                workers=args.workers,
+                force_ocr=args.force_ocr,
+                device=args.device,
                 markdown=args.markdown,
-                force_ocr=args.force_ocr
+                amount=args.amount if args.amount > 0 else 0,
             )
-
-        # Save metrics to JSON file
-        metrics_path = Path(args.output) / f"{Path(args.source).name}_metrics.json"
-        with open(metrics_path, 'w', encoding='utf-8') as f:
-            json.dump(metrics, f, indent=4, ensure_ascii=False)
 
         # Print the metrics
         print("=" * 50)
         print("\033[32mProcessing completed successfully\033[0m")
-        print(f"\033[32mMetrics saved to: {metrics_path}\033[0m")      
+        print(f"\033[32mMetrics in output path as final_metrics.json\033[0m")      
         print("=" * 50)
         print(f"Total amount of files: {metrics['total_docs']}")
         print(f"Successfully processed: {metrics['processed_docs']}")
@@ -260,12 +277,20 @@ def main():
         print(f"Success rate: {metrics['success_rate']}")
         print(f"Total time elapsed: {metrics['elapsed_time']:.2f} seconds")
         print("=" * 50)
+
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        memory_mb = memory_info.rss / 1024 / 1024
+        print(f"Memory usage: {memory_mb:.2f} MB")
+        print("=" * 50)
     
     except KeyboardInterrupt:
         print("\033[31mProcess interrupted by user\033[0m")
         sys.exit(1)
     except Exception as e:
         print(f"\033[31mAn error occurred: {e}\033[0m")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -4,6 +4,10 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+<div style="display: flex; justify-content: center; margin: 20px">
+  <img src="pdfplucker.png" alt="PdfPlucker (AI generated)" width="300">
+</div>
+
 PdfPlucker is a powerful wrapper for the Docling library, specifically designed for batch processing PDF files. It provides users with fine-grained control over processing parameters and output configuration through a simple command-line interface.
 
 ## Features
@@ -83,6 +87,48 @@ Docling will extract text from natively digital PDFs. If you wish to force the u
 ### Amount of workers
 
 When processing large amounts of files, note that many workers might lead to RAM shortage and memory leaks, mainly when paired with forced ocr. Try balancing the amount of workers with the amount of available memory and power of your computer.
+
+## Alternative function
+
+Alternatively to the CLI, you can also the pdfplucker built-in function to integrate inside your code. The function structure is as follows:
+
+```python
+import pdfplucker
+
+metrics = pdfplucker.pdfplucker(
+    source: str | Path, # either directory of pdfs or a single pdf
+    output: str | Path ="./results",
+    folder_separation: bool = False,
+    images: str | Path | None = None,
+    timeout: int = 600,
+    workers: int = 4,
+    force_ocr: bool = False,
+    device: str = "AUTO",
+    markdown: bool = False,
+    amount: int = 0,
+)
+```
+
+This will either return _true_ or _false_ if source is a single PDF, or a metrics json that has the following example structure:
+
+```json
+{
+    "initial_time": 1744817807.3165462,
+    "elapsed_time": 84290.00611519814,
+    "total_docs": 115,
+    "processed_docs": 115,
+    "failed_docs": 50,
+    "timeout_docs": 0,
+    "success_rate": 56.52173913043478,
+    "fails": [
+        {
+            "file": "/path/to/failed_file.pdf",
+            "error": "Type of error"
+        },
+    ]
+}
+```
+
 
 ## Examples
 

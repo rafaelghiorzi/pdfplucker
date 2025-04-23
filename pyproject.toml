@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pdfplucker"
-version = "0.3.6"
+version = "0.3.7"
 description = "Docling wrapper for PDF parsing"
 authors = ["rafaelghiorzi <rafael.ghiorzi@gmail.com>"]
 keywords = [
@@ -32,11 +32,7 @@ classifiers = [
 python = ">=3.12,<3.13"
 docling = "^2.30.0"
 PyMuPDF = "^1.25.5"
-rapidocr_onnxruntime = "^1.4.4"
-onnxruntime_gpu = { version = ">=1.21.0", optional = true }
-
-[tool.poetry.extras]
-gpu = ["onnxruntime_gpu"]
+psutil = "^7.0.0"
 
 [tool.poetry.group.dev.dependencies]
 setuptools = "^78.1.0"
