@@ -64,7 +64,8 @@ def create_parser():
 
     parser.add_argument(
         '-d', '--device',
-        choices=['CPU', 'CUDA', 'AUTO'],
+        choices=['CPU', 'CUDA', 'AUTO', 'cpu', 'cuda', 'auto'],
+        type=str,
         default='AUTO',
         help='Type of device for processing (CUDA, CPU or AUTO)'
     )
