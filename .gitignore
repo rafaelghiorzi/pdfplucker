@@ -1,4 +1,5 @@
 /.venv
+logs/
 __pycache__/
 test.py
 pdfplucker_process.log

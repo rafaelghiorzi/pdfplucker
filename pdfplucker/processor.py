@@ -1,4 +1,4 @@
-# Version 0.3.8 (0.3.7 but Modified)
+# Version 0.3.9
 
 import os
 import gc
@@ -14,6 +14,7 @@ from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import ConversionResult
 from docling_core.types.doc import ImageRefMode
+from docling.exceptions import ConversionError
 from docling.datamodel.pipeline_options import (
     AcceleratorDevice,
     AcceleratorOptions,
@@ -97,7 +98,7 @@ def process_with_timeout(
     queue = multiprocessing.Queue()
     
     filename = os.path.basename(source)
-    logger.info(f"Starting processing for {filename}")
+    logger.info(f"Starting processing for '{filename}'")
 
     process = multiprocessing.Process(
         target=_worker,
@@ -109,7 +110,7 @@ def process_with_timeout(
     process.join(timeout)
 
     if process.is_alive():
-        logger.error(f"Timeout after {timeout}s! Killing process for {filename}")
+        logger.error(f"Timeout after {timeout}s! Killing process for '{filename}'")
         process.terminate()
         process.join()
         return False
@@ -119,9 +120,7 @@ def process_with_timeout(
             result = queue.get()
             time_elapsed = time.time() - start_time
             if result:
-                logger.info(f"Successfully processed {filename} in {time_elapsed:.2f}s")
-            else:
-                logger.error(f"Failed to process {filename} in {time_elapsed:.2f}s")
+                logger.info(f"Successfully processed '{filename}' in {time_elapsed:.2f}s")
             return result
         return False
     except Exception as e:
@@ -172,7 +171,7 @@ def process_pdf(
             data["metadata"]["filename"] = filename
             data["metadata"]["pages"] = num_pages
 
-        conv: ConversionResult = doc_converter.convert(source)
+        conv: ConversionResult = doc_converter.convert(str(source))
         format_result(conv, data, base_filename, image_folder)
         link_subtitles(data)
 
@@ -193,18 +192,21 @@ def process_pdf(
         return True
 
     except MemoryError:
-        logger.error(f"Out of memory while converting {filename}")
+        logger.error(f"Out of memory while converting '{filename}'")
         gc.collect()
         return False
     except (fitz.FileDataError, fitz.EmptyFileError) as e:
-        logger.error(f"Failed to process {filename}: {e}")
+        logger.error(f"Failed to process '{filename}': {e}")
         return False
     except IOError as e:      
-        logger.error(f"I/O error while processing {filename}: {e}")
+        logger.error(f"I/O error while processing '{filename}': {e}")
         return False
     except Exception as e:    
         import traceback
-        logger.error(f"Error processing {filename}: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Error processing '{filename}': {str(e)}\n{traceback.format_exc()}")
+        return False
+    except ConversionError as e:
+        logger.error(f"Conversion error for '{filename}': {e}")
         return False
     
     finally:
@@ -294,14 +296,14 @@ def process_batch(
                         'error': 'Processing error'
                     })
             except TimeoutError:
-                logger.error(f"Timeout reached for {os.path.basename(str(pdf_file))}")
+                logger.error(f"Timeout reached for '{os.path.basename(str(pdf_file))}'")
                 metrics['timeout_docs'] += 1
                 metrics['fails'].append({
                     'file': str(pdf_file),
                     'error': "Timeout reached"
                 })
             except Exception as e:
-                logger.error(f"Processing error for {os.path.basename(str(pdf_file))}: {e}")
+                logger.error(f"Processing error for '{os.path.basename(str(pdf_file))}': {e}")
                 metrics['failed_docs'] += 1
                 metrics['fails'].append({
                     'file': str(pdf_file),

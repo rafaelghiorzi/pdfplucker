@@ -58,6 +58,24 @@ def pdfplucker(
     output_path = Path(output)
     image_path = Path(images) if images else None
 
+    device = device.upper()
+
+    print("=" * 50)
+    print("\033[34mPDFPlucker CLI - Docling Wrapper\033[0m")
+    print("=" * 50)
+    print(f"Source path: {source}")
+    print(f"Output path: {output}")
+    print(f"Device type: {device}")
+    print(f"Number of workers: {workers}")
+    print(f"Force OCR: {'yes' if force_ocr else 'no'}")
+    print(f"Timeout: {timeout} seconds")
+    print(f"Save markdown: {'yes' if markdown else 'no'}")
+    print(f"Folder separation: {'yes' if folder_separation else 'no'}")
+    print(f"Images path: {images if images else 'not used'}")
+    print(f"Amount of files to process: {amount if amount > 0 else 'all'}")
+    print("=" * 50)
+    print("Starting...")
+
     # Normalize paths for Windows compatibility
     source_path = Path(str(source_path).replace('\\', '/'))
     output_path = Path(str(output_path).replace('\\', '/'))
@@ -65,7 +83,6 @@ def pdfplucker(
         image_path = Path(str(image_path).replace('\\', '/'))
     
     if source_path.is_file():
-        print(f"Processing single PDF: {source_path}")
         # Process single PDF
         doc_converter = create_converter(
             device=device.upper(),
@@ -90,7 +107,6 @@ def pdfplucker(
         )
         return sucess
     else:
-        print(f"Processing batch of PDFs in {source_path}")
         # Process batch of PDFs
         return process_batch(
             source=source_path,

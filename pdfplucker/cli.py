@@ -261,7 +261,7 @@ def main():
                 timeout=args.timeout,
                 workers=args.workers,
                 force_ocr=args.force_ocr,
-                device=args.device,
+                device=args.device.upper(),
                 markdown=args.markdown,
                 amount=args.amount if args.amount > 0 else 0,
             )
