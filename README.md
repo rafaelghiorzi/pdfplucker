@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 <div style="display: flex; justify-content: center; margin: 20px">
-  <img src="pdfplucker.png" alt="PdfPlucker (AI generated)" width="300">
+  <img src="logo.png" alt="PdfPlucker (AI generated)" width="300">
 </div>
 
 PdfPlucker is a powerful wrapper for the Docling library, specifically designed for batch processing PDF files. It provides users with fine-grained control over processing parameters and output configuration through a simple command-line interface.
@@ -27,11 +27,6 @@ PdfPlucker requires Python 3.12 or higher and Torch 2.6.0 or higher. To install,
 pip install pdfplucker
 ```
 
-if you want GPU support, run:
-
-```bash
-pip install pdfplucker[gpu]
-```
 _Note: For GPU support, you may need to install the PyTorch version that matches your CUDA version._
 _Check your CUDA version with `nvidia-smi` and visit https://pytorch.org/get-started/locally/ for instructions_
 
