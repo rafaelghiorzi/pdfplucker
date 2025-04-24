@@ -171,6 +171,23 @@ def process_single_file(args: argparse.Namespace):
     source_path = args.source
     output_path = args.output
 
+    # Print the main information
+    print("=" * 50)
+    print("\033[34mPDFPlucker CLI - Docling Wrapper\033[0m")
+    print("=" * 50)
+    print(f"Source path: {args.source}")
+    print(f"Output path: {args.output}")
+    print(f"Device type: {args.device}")
+    print(f"Number of workers: {args.workers}")
+    print(f"Force OCR: {'yes' if args.force_ocr else 'no'}")
+    print(f"Timeout: {args.timeout} seconds")
+    print(f"Save markdown: {'yes' if args.markdown else 'no'}")
+    print(f"Folder separation: {'yes' if args.folder_separation else 'no'}")
+    print(f"Images path: {args.images if args.images else 'not used'}")
+    print(f"Amount of files to process: {args.amount if args.amount > 0 else 'all'}")
+    print("=" * 50)
+    print("Starting...")
+
     if args.folder_separation:
         images_path = f"{output_path}/{os.path.basename(source_path)}/images"
     else:
@@ -229,23 +246,6 @@ def main():
     if not valid_args:
         print(f"\033[91mError: {error}\033[0m")
         sys.exit(1)
-
-    # Print the main information
-    print("=" * 50)
-    print("\033[34mPDFPlucker CLI - Docling Wrapper\033[0m")
-    print("=" * 50)
-    print(f"Source path: {args.source}")
-    print(f"Output path: {args.output}")
-    print(f"Device type: {args.device}")
-    print(f"Number of workers: {args.workers}")
-    print(f"Force OCR: {'yes' if args.force_ocr else 'no'}")
-    print(f"Timeout: {args.timeout} seconds")
-    print(f"Save markdown: {'yes' if args.markdown else 'no'}")
-    print(f"Folder separation: {'yes' if args.folder_separation else 'no'}")
-    print(f"Images path: {args.images if args.images else 'not used'}")
-    print(f"Amount of files to process: {args.amount if args.amount > 0 else 'all'}")
-    print("=" * 50)
-    print("Starting...")
 
     # Start the processing
     try:

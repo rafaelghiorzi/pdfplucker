@@ -5,7 +5,6 @@ import gc
 import json
 import fitz
 import time
-import logging
 import multiprocessing  # Changed back to multiprocessing
 from pathlib import Path
 from concurrent.futures import as_completed, TimeoutError
@@ -21,6 +20,105 @@ from docling.datamodel.pipeline_options import (
     PdfPipelineOptions,
     EasyOcrOptions,
 )
+
+def update_error_log(
+    filename: str,
+    error: str,
+    final: bool = False,
+    temp_dir: str = None,
+    metrics: dict = None,
+    output_dir: str = None
+) -> None:
+    """
+    Updates error logs in temporary files and optionally finalizes metrics.
+    
+    Args:
+        filename: The name of the file that caused the error
+        error: Error message or description
+        final: If True, consolidates all errors into final metrics
+        temp_dir: Directory for temporary error files (defaults to output_dir/temp)
+        metrics: Metrics dictionary (required if final=True)
+        output_dir: Directory for output files (required if final=True)
+    """
+    
+    # Set default temp directory if not provided
+    if temp_dir is None:
+        if output_dir is None:
+            temp_dir = "temp_errors"
+        else:
+            temp_dir = os.path.join(output_dir, "temp_errors")
+    
+    # Create temp directory if it doesn't exist
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    if not final:
+        # Create a safe filename for the temp file
+        safe_filename = Path(filename).stem
+        error_file = os.path.join(temp_dir, f"error_{safe_filename}_{int(time.time())}.json")
+        
+        # Write error information to temp file
+        error_data = {
+            "file": filename,
+            "error": error,
+            "timestamp": time.time()
+        }
+        
+        with open(error_file, 'w', encoding='utf-8') as f:
+            json.dump(error_data, f, ensure_ascii=False, indent=2)
+            
+    else:
+        # Final mode - consolidate all errors and update metrics
+        if metrics is None or output_dir is None:
+            raise ValueError("Metrics and output_dir must be provided when final=True")
+        
+        # Initialize fails key if it doesn't exist
+        if 'fails' not in metrics:
+            metrics['fails'] = []
+        
+        # Get all error files
+        error_files = [f for f in os.listdir(temp_dir) if f.startswith("error_")]
+        
+        # Read all error files and collect data
+        all_errors = []
+        for error_file in error_files:
+            try:
+                with open(os.path.join(temp_dir, error_file), 'r', encoding='utf-8') as f:
+                    error_data = json.load(f)
+                    all_errors.append({
+                        'file': error_data.get('file', 'unknown'),
+                        'error': error_data.get('error', 'Unknown error')
+                    })
+            except Exception as e:
+                print(f"Error reading error file {error_file}: {e}")
+        
+        # Add all errors to metrics (without overwriting existing ones)
+        metrics['fails'] = metrics['fails'] + all_errors
+        
+        # Update failed_docs count to match the total number of unique failed files
+        # Create a set of unique filenames that failed
+        unique_failed_files = set(error['file'] for error in metrics['fails'])
+        metrics['failed_docs'] = len(unique_failed_files)
+        
+        if 'success_rate' in metrics:
+            # Recalculate success rate
+            processed = metrics['processed_docs']
+            if processed > 0:
+                metrics['success_rate'] = ((processed - metrics['failed_docs']) / processed) * 100
+        else:
+            metrics['success_rate'] = 0
+
+        # Write final metrics file
+        metrics_file = os.path.join(output_dir, 'final_metrics.json')
+        with open(metrics_file, 'w', encoding='utf-8') as f:
+            json.dump(metrics, f, ensure_ascii=False, indent=2)
+
+        # delete temp directory and all files inside it
+        try:
+            for error_file in error_files:
+                os.remove(os.path.join(temp_dir, error_file))
+            os.rmdir(temp_dir)
+        except Exception as e:
+            print(f"Error deleting temp directory {temp_dir}: {e}")
 
 def convert_paths_to_strings(obj):
     """Recursively convert all Path objects to strings in a nested structure"""
@@ -64,20 +162,20 @@ def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list
 
     return converter
 
-# Reintroducing the worker function from 0.3.6
 def _worker(source, output, image_path, doc_converter, separate_folders, markdown, queue):
     try:
-        success = process_pdf(
+        result = process_pdf(
             source,
             output,
             image_path,
             doc_converter,
             separate_folders,
-            markdown
+            markdown,
         )
-        queue.put(success)
+        queue.put(result)
     except Exception as e:
-        logger.error(f"Non treated error at _worker: {e}")
+        logger.error(f"Non treated error at _worker function: {e}")
+        update_error_log(str(source), f"Non treated error at _worker: {e}", final=False, temp_dir=os.path.join(output, "temp_errors"), metrics=None, output_dir=None)
         queue.put(False)
 
 def process_with_timeout(
@@ -87,7 +185,7 @@ def process_with_timeout(
     doc_converter: DocumentConverter,
     separate_folders: bool = False,
     timeout: int = 600,
-    markdown: bool = False
+    markdown: bool = False,
 ) -> bool:
     """ Process a single PDF with safety timeout """
     """ Returns True if successful, False otherwise """
@@ -111,6 +209,7 @@ def process_with_timeout(
 
     if process.is_alive():
         logger.error(f"Timeout after {timeout}s! Killing process for '{filename}'")
+        update_error_log(str(source), f"Timeout reached for '{filename}'", final=False, temp_dir=os.path.join(output, "temp_errors"), metrics=None, output_dir=None)
         process.terminate()
         process.join()
         return False
@@ -121,10 +220,12 @@ def process_with_timeout(
             time_elapsed = time.time() - start_time
             if result:
                 logger.info(f"Successfully processed '{filename}' in {time_elapsed:.2f}s")
-            return result
-        return False
+                return True
+            else:
+                return False
     except Exception as e:
         logger.error(f"Error retrieving result: {e}")
+        update_error_log(str(source), f"Error retrieving results: {e}", final=False, temp_dir=os.path.join(output, "temp_errors"), metrics=None, output_dir=None)
         return False
 
 def process_pdf(
@@ -171,17 +272,22 @@ def process_pdf(
             data["metadata"]["filename"] = filename
             data["metadata"]["pages"] = num_pages
 
-        conv: ConversionResult = doc_converter.convert(str(source))
+        conv: ConversionResult = doc_converter.convert(str(source)) # use str instead of Path
         format_result(conv, data, base_filename, image_folder)
         link_subtitles(data)
 
         # Save Markdown if asked - after clearing conversion memory
         if markdown:
             try:
-                md_filename = Path(os.path.join(specific_folder, f"{base_filename}.md"))
-                conv.document.save_as_markdown(md_filename, image_mode=ImageRefMode.EMBEDDED)
+                if separate_folders:
+                    md_filename = Path(os.path.join(specific_folder, f"{base_filename}.md"))
+                    conv.document.save_as_markdown(md_filename, image_mode=ImageRefMode.EMBEDDED)
+                else:
+                    md_filename = Path(os.path.join(output, f"{base_filename}.md"))
+                    conv.document.save_as_markdown(md_filename, image_mode=ImageRefMode.EMBEDDED)
             except Exception as md_error:
                 logger.error(f"Error saving markdown: {md_error}")
+                update_error_log(str(source), f"Failed to export markdown: {md_error}", final=False, temp_dir=os.path.join(output, "temp_errors"), metrics=None, output_dir=None)
 
         # transform Paths into strings
         data = convert_paths_to_strings(data)
@@ -193,22 +299,26 @@ def process_pdf(
 
     except MemoryError:
         logger.error(f"Out of memory while converting '{filename}'")
-        gc.collect()
+        update_error_log(str(source), f"Out of memory while converting '{filename}'", final=False, temp_dir=os.path.join(output, "temp_errors"), metrics=None, output_dir=None)
         return False
     except (fitz.FileDataError, fitz.EmptyFileError) as e:
         logger.error(f"Failed to process '{filename}': {e}")
+        update_error_log(str(source), f"Failed to process '{filename}': {e}", final=False, temp_dir=os.path.join(output, "temp_errors"), metrics=None, output_dir=None)
         return False
     except IOError as e:      
         logger.error(f"I/O error while processing '{filename}': {e}")
+        update_error_log(str(source), f"I/O error while processing '{filename}': {e}", final=False, temp_dir=os.path.join(output, "temp_errors"), metrics=None, output_dir=None)
+        return False
+    except ConversionError as e:
+        logger.error(f"Conversion error for '{filename}': {e}")
+        update_error_log(str(source), f"Conversion error for '{filename}': {e}", final=False, temp_dir=os.path.join(output, "temp_errors"), metrics=None, output_dir=None)
         return False
     except Exception as e:    
         import traceback
         logger.error(f"Error processing '{filename}': {str(e)}\n{traceback.format_exc()}")
+        update_error_log(str(source), f"Error processing '{filename}': {str(e)}", final=False, temp_dir=os.path.join(output, "temp_errors"), metrics=None, output_dir=None)
         return False
-    except ConversionError as e:
-        logger.error(f"Conversion error for '{filename}': {e}")
-        return False
-    
+
     finally:
         gc.collect()  # Aggressive garbage collection
         try:
@@ -261,10 +371,8 @@ def process_batch(
         'total_docs': total,
         'processed_docs': 0,
         'failed_docs': 0,
-        'timeout_docs': 0,
         'success_rate': 0,
         'memory_peak': 0,
-        'fails': []
     }
 
     # Switch back to ProcessPoolExecutor
@@ -279,7 +387,7 @@ def process_batch(
                 doc_converter,
                 separate_folders,
                 timeout,
-                markdown
+                markdown,
             )
             futures[future] = pdf_file
 
@@ -291,36 +399,33 @@ def process_batch(
                 success = future.result()
                 if not success:
                     metrics['failed_docs'] += 1
-                    metrics['fails'].append({
-                        'file': str(pdf_file),
-                        'error': 'Processing error'
-                    })
             except TimeoutError:
                 logger.error(f"Timeout reached for '{os.path.basename(str(pdf_file))}'")
-                metrics['timeout_docs'] += 1
-                metrics['fails'].append({
-                    'file': str(pdf_file),
-                    'error': "Timeout reached"
-                })
+                metrics['failed_docs'] += 1
+                update_error_log(str(source), f"Timeout error in ProcessPoolExecutor", final=False, temp_dir=os.path.join(output, "temp_errors"), metrics=None, output_dir=None)
             except Exception as e:
                 logger.error(f"Processing error for '{os.path.basename(str(pdf_file))}': {e}")
+                update_error_log(str(source), f"Processing error in ProcessPoolExecutor: {e}", final=False, temp_dir=os.path.join(output, "temp_errors"), metrics=None, output_dir=None)
                 metrics['failed_docs'] += 1
-                metrics['fails'].append({
-                    'file': str(pdf_file),
-                    'error': str(e)
-                })
-
             gc.collect()
 
             if metrics['processed_docs'] % 5 == 0:
                 # Save intermediate metrics every 5 files
                 _update_metrics(metrics, output)
 
+        # Check for memory peak
+        import psutil
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        metrics['memory_peak'] = f"{(memory_info.rss / (1024 * 1024)):.2f} MB"
+
     # Finalize metrics
     del doc_converter
     gc.collect()
     _update_metrics(metrics, output, final=True)
-    logger.info(f"Processing concluded, sucess rate: {metrics['success_rate']:.1f}%, total time: {metrics['elapsed_time']:.1f}s")
+    logger.info(f"Processing concluded, sucess rate: {metrics['success_rate']:.2f}%, total time: {metrics['elapsed_time']:.1f}s")
+
+    update_error_log("final", "Processing complete", final=True, temp_dir=os.path.join(output, "temp_errors"), metrics=metrics, output_dir=output)
 
     return metrics
 
@@ -333,8 +438,9 @@ def _update_metrics(metrics: dict, output_dir: str, final: bool = False) -> None
 
     processed = metrics['processed_docs']
     if processed > 0:
-        metrics['success_rate'] = ((processed - metrics['failed_docs'] - metrics['timeout_docs']) / processed) * 100
+        metrics['success_rate'] = ((processed - metrics['failed_docs']) / processed) * 100
     
     filename = 'final_metrics.json' if final else 'intermediate_metrics.json'
     with open(os.path.join(output_dir, filename), 'w') as f:
         json.dump(metrics, f, indent=2)
+    logger.info(f"Metrics updated: {filename}")

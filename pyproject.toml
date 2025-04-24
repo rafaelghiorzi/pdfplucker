@@ -4,8 +4,10 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pdfplucker"
-version = "0.3.9"
+version = "0.3.10"
 description = "Docling wrapper for PDF parsing"
+homepage = "https://github.com/rafaelghiorzi/pdfplucker"
+license = "MIT" 
 authors = ["rafaelghiorzi <rafael.ghiorzi@gmail.com>"]
 keywords = [
     "docling",
@@ -19,6 +21,8 @@ packages = [
     { include = "pdfplucker" }
 ]
 classifiers = [
+    "Topic :: Text Processing :: Document Analysis",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
