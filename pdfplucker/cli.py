@@ -171,32 +171,19 @@ def process_single_file(args: argparse.Namespace):
     source_path = args.source
     output_path = args.output
 
-    # Print the main information
-    print("=" * 50)
-    print("\033[34mPDFPlucker CLI - Docling Wrapper\033[0m")
-    print("=" * 50)
-    print(f"Source path: {args.source}")
-    print(f"Output path: {args.output}")
-    print(f"Device type: {args.device}")
-    print(f"Number of workers: {args.workers}")
-    print(f"Force OCR: {'yes' if args.force_ocr else 'no'}")
-    print(f"Timeout: {args.timeout} seconds")
-    print(f"Save markdown: {'yes' if args.markdown else 'no'}")
-    print(f"Folder separation: {'yes' if args.folder_separation else 'no'}")
-    print(f"Images path: {args.images if args.images else 'not used'}")
-    print(f"Amount of files to process: {args.amount if args.amount > 0 else 'all'}")
-    print("=" * 50)
-    print("Starting...")
-
     if args.folder_separation:
-        images_path = f"{output_path}/{os.path.basename(source_path)}/images"
+        # Get the filename without extension to use as folder name
+        base_filename = os.path.splitext(os.path.basename(source_path))[0]
+        pdf_folder = os.path.join(output_path, base_filename)
+        images_path = os.path.join(pdf_folder, "images")
+        
+        # Create both parent directory and images directory
+        os.makedirs(pdf_folder, exist_ok=True)
+        os.makedirs(images_path, exist_ok=True)
+        print(f"\033[32mCreated folder: {pdf_folder}\033[0m")
     else:
-        images_path = f"{output_path}/images"
-    
-    # Create the images path if it doesn't exist
-    if not os.path.exists(images_path):
-        os.mkdir(images_path)
-        print(f"\033[32mImages path created: {images_path}\033[0m")
+        images_path = args.images if args.images else os.path.join(output_path, "images")
+        os.makedirs(images_path, exist_ok=True)
 
     start_time = time.time()
     success = pdfplucker(
@@ -251,7 +238,7 @@ def main():
     try:
         if Path(args.source).is_file():
             # Process a single PDF file
-            sucess =  process_single_file(args)
+            sucess = process_single_file(args)
             sys.exit(0 if sucess else 1)
         else:
             metrics = pdfplucker(
@@ -274,7 +261,7 @@ def main():
         print("=" * 50)
         print(f"Total amount of files: {metrics['total_docs']}")
         print(f"Successfully processed: {metrics['processed_docs']}")
-        print(f"Failed processes: {metrics['failed_docs'] + metrics['timeout_docs']}")
+        print(f"Failed processes: {metrics['failed_docs']}")
         print(f"Success rate: {metrics['success_rate']}")
         print(f"Total time elapsed: {metrics['elapsed_time']:.2f} seconds")
         print("=" * 50)
