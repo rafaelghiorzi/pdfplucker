@@ -164,14 +164,10 @@ class ColorfulFormatter(logging.Formatter):
         'CRITICAL': '\033[95m',  # Magenta
     }
     RESET = '\033[0m'  # Reset to default color
-    TIME_COLOR = '\033[92m'  # Cyan
 
     def format(self, record):
         log_color = self.COLOURS.get(record.levelname, self.RESET)
         record.levelname = f"{log_color}{record.levelname}{self.RESET}"
-        
-        original_time = self.formatTime(record, self.datefmt)
-        record.asctime = f"{self.TIME_COLOR}{original_time}{self.RESET}"
    
         return super().format(record)
 
