@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "pdfplucker"
-version = "1.0.0"
+version = "1.0.2"
 description = "Docling wrapper for PDF parsing"
 homepage = "https://github.com/ipeadata-lab/pdfplucker"
 license = "MIT" 
