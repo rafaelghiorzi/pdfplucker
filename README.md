@@ -33,7 +33,7 @@ _Check your CUDA version with `nvidia-smi` and visit https://pytorch.org/get-sta
 Or install from source:
 
 ```bash
-git clone https://github.com/rafaelghiorzi/pdfplucker.git
+git clone https://github.com/ipeadata-lab/pdfplucker.git
 cd pdfplucker
 pip install -r requirements.txt
 ```
