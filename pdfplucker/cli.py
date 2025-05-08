@@ -218,7 +218,7 @@ def main():
     parser = create_parser()
 
     if len(sys.argv) == 1:
-        print("\033[34mPDFPlucker CLI - Docling Wrapper\033[0m")
+        print("\033[34mPdfPlucker CLI - Docling Wrapper\033[0m")
         print("A tool for extracting information from PDF files.")
         print("Use the `--help` flag to see available options.")
         sys.exit(0)

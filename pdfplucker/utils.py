@@ -9,48 +9,102 @@ from docling_core.types.doc import (
     DocItemLabel,
 )
 from typing import TypedDict, List, Dict, Any
-import warnings
 import logging
 import os
+import traceback
 
 class Data(TypedDict):
     metadata: Dict[str, Any]
-    sections: List[Dict[str, Any]]
+    pages: List[Dict[str, Any]]
     images: List[Dict[str, Any]]
     tables: List[Dict[str, Any]]
-    subtitles: List[Dict[str, Any]]
+    captions: List[Dict[str, Any]]
 
-def format_result(conv: ConversionResult, data: Data, filename: str, image_path: str) -> None:
+def format_results(conv: ConversionResult, data: Data, filename: str, image_path: str) -> bool:
+    ''' Uses the docling document to format a readable JSON result '''
+
+    counter = 0
     try:
-        ''' Uses the docling document to format a readable JSON result '''
-
-        collecting = None
-        counter = 0
-
         for idx, (item, _) in enumerate(conv.document.iterate_items()):
             if isinstance(item, TextItem):
-                if item.label == DocItemLabel.SECTION_HEADER:
-                    if collecting is not None:
-                        data['sections'].append(collecting)
-                    collecting = {'title': item.text, 'text': ''}
-                elif item.label == DocItemLabel.FORMULA:
-                    if collecting is not None:
-                        collecting['text'] += '\n' + "Equation:" + item.text if collecting['text'] else item.text
-                else:
-                    if collecting is not None:
-                        collecting['text'] += '\n' + item.text if collecting['text'] else item.text
+                page = item.prov[0].page_no
+                label = item.label
+                text = item.text
+                content =  None
+                match label:
+                    case DocItemLabel.SECTION_HEADER:
+                        content = f"\n# {text}\n"
+                    case DocItemLabel.FORMULA:
+                        content = f" Equation: {text}\n"
+                    case DocItemLabel.REFERENCE:
+                        content = f"\nReference: {text}\n"
+                    case DocItemLabel.LIST_ITEM:
+                        content = f"\n- {text}\n"
+                    case DocItemLabel.CAPTION:
+                        content = f" _{text}_\n"
+                        data['captions'].append({
+                            'self_ref' : item.self_ref,
+                            'cref' : item.parent.cref,
+                            'text' : text
+                        })
+                    case DocItemLabel.FOOTNOTE:
+                        content = f"\nFootnote: {text}\n"
+                    case DocItemLabel.TITLE:
+                        content = f"\n## {text}\n"
+                    case DocItemLabel.TEXT:
+                        content = f" {text}"
+                    case _:
+                        content = f" {text}"
+
+                page_found = False
+                for page_dict in data['pages']:
+                    if page_dict['page_number'] == page:
+                        page_found = True
+                        if 'content' not in page_dict:
+                            page_dict['content'] = ""
+                        page_dict['content'] += content
+                        break
+                        
+                if not page_found:
+                    new_page = {'page_number': page, 'content': content}
+                    data['pages'].append(new_page)
+    
             elif isinstance(item, TableItem):
-                table = item.export_to_dataframe()
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", UserWarning)
-                    table_dict = table.to_dict()
+                table = item.export_to_markdown(doc=conv.document)
+                self_ref = item.self_ref
+                captions = item.captions
+                references = item.references
+                footnotes = item.footnotes
+                page = item.prov[0].page_no
+    
+                page_found = False
+                for page_dict in data['pages']:
+                    if page_dict['page_number'] == page:
+                        page_found = True
+                        if 'content' not in page_dict:
+                            page_dict['content'] = ""
+                        page_dict['content'] += f" <{self_ref}>"
+                if not page_found:
+                    new_page = {'page_number': page, 'content': f" <{self_ref}>"}
+                    data['pages'].append(new_page)
                 data['tables'].append({
-                    'self_ref' : item.self_ref,
-                    'subtitle' : '',
-                    'table' : table_dict
+                    'self_ref' : self_ref,
+                    'captions' : captions,
+                    'caption' : "",
+                    'references' : references,
+                    'footnotes' : footnotes,
+                    'page' : page, 
+                    'table' : table
                 })
+    
             elif isinstance(item, PictureItem):
+                self_ref = item.self_ref
+                captions = item.captions
+                references = item.references
+                footnotes = item.footnotes
+                page = item.prov[0].page_no
                 classification = None
+                confidence = None
                 if item.annotations:
                     for annotation in item.annotations:
                         if annotation.kind == 'classification':
@@ -59,92 +113,63 @@ def format_result(conv: ConversionResult, data: Data, filename: str, image_path:
                                 annotation.predicted_classes,
                                 key=lambda cls: cls.confidence
                             )
-                            classification = {
-                                'class_name': best_class.class_name,
-                                'confidence': best_class.confidence
-                            }
+                            classification = best_class.class_name,
+                            confidence = best_class.confidence
                             break
-
-                image_filename = (image_path  / f"{filename}_{counter}.png")
-                with image_filename.open('wb') as f:
-                    item.get_image(conv.document).save(f, "PNG")
+                image_filename = (image_path / f"{filename}_{counter}.png")
+                placeholder = f"{filename}_{counter}.png"
+                with image_filename.open('wb') as file:
+                    item.get_image(conv.document).save(file, "PNG")
                 data['images'].append({
-                    'ref': f"{filename}_{counter}.png",
-                    'self_ref' : item.self_ref,
+                    'ref': placeholder,
+                    'self_ref' : self_ref,
+                    'captions' : captions,
+                    'caption' : "",
                     'classification' : classification,
-                    'subtitle' : ''
+                    'confidence' : confidence,
+                    'references' : references,
+                    'footnotes' : footnotes,
+                    'page' : page,
                 })
                 counter += 1
+    
+                page_found = False
+                for page_dict in data['pages']:
+                    if page_dict['page_number'] == page:
+                        page_found = True
+                        if 'content' not in page_dict:
+                            page_dict['content'] = ""
+                        page_dict['content'] += f" <{placeholder}>"
+                if not page_found:
+                    new_page = {'page_number': page, 'content': f" <{placeholder}>"}
+                    data['pages'].append(new_page)
 
-        # Collecting the results after all iterations
-        if collecting is not None:
-            data['sections'].append(collecting)
-        for text in conv.document.texts:
-            if text.label == 'caption':
-                data['subtitles'].append({
-                    'ref' : text.parent.cref,
-                    'text' : text.text
-                })
+
+        caption_dict = {caption["cref"]: caption["text"] for caption in data.get("captions", [])}
+    
+        for image in data.get("images", []):
+            self_ref = image.get("self_ref")
+            if self_ref in caption_dict:
+                caption_text = caption_dict[self_ref]
+                if caption_text not in image.get("caption", ""):
+                    image["caption"] += f"{caption_text} "
+            image.pop('captions')
+
+        for table in data.get("tables", []):
+            self_ref = table.get("self_ref")
+            if self_ref in caption_dict:
+                caption_text = caption_dict[self_ref]
+                if caption_text not in table.get("caption", ""):
+                    table["caption"] += f"{caption_text} "
+            table.pop('captions')
+
+        data.pop('captions')
+        
+        return True
     except Exception as e:
         print(f"\033[33mError formatting result: {e}\033[0m")
-
-def link_subtitles(data: Data) -> None:
-    ''' 
-    Try associating subtitles with images or tables
-    based on refs saved on the Docling document
-    '''
-    try:
-        images = data.get('images', [])
-        tables = data.get('tables', [])
-        subtitles = data.get('subtitles', [])
-
-        # iterate over all images and all subtitles
-        for img in images:
-            self_ref = img.get('self_ref')
-            if self_ref is None:
-                continue
-            
-            # For each image, try to find a ref equals to the image self ref
-            for sub in subtitles[:]:
-                ref = sub.get('ref')
-                if self_ref == ref:
-                    img['subtitle'] = sub.get('text', '')
-                    img.pop('item', None)
-                    # remove the subtitle to be sure
-                    subtitles.remove(sub)
-                    break 
-
-        # iterate over all tables and the remaining subtitles
-        for tab in tables:
-            self_ref = tab.get('self_ref')
-            if self_ref is None:
-                continue
-
-            # For each table, try to find a ref equals to the table self ref
-            for sub in subtitles[:]:
-                ref = sub.get('ref')
-                if self_ref == ref:
-                    tab['subtitle'] = sub.get('text', '')
-                    subtitles.remove(sub)
-                    break
-
-        for sub in subtitles:
-            data['images'].append({
-                'ref': sub.get('ref'),
-                'self_ref' : None,
-                'subtitle' : sub.get('text', '')
-            })
-
-        data.pop('subtitles')
-    except Exception as e:
-        print(f"\033[33mError linking subtitles: {e}\033[0m]")
-    finally:
-        if 'subtitles' in locals():
-            del subtitles
-        if 'images' in locals():
-            del images
-        if 'tables' in locals():
-            del tables
+        traceback.print_exc()
+        return False
 
 def get_safe_executor(max_workers=None):
     try:

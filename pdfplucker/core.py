@@ -61,7 +61,7 @@ def pdfplucker(
     device = device.upper()
 
     print("=" * 50)
-    print("\033[34mPDFPlucker CLI - Docling Wrapper\033[0m")
+    print("\033[34mPdfPlucker CLI - Docling Wrapper\033[0m")
     print("=" * 50)
     print(f"Source path: {source}")
     print(f"Output path: {output}")

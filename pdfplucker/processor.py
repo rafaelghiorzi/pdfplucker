@@ -8,7 +8,7 @@ import time
 import multiprocessing  # Changed back to multiprocessing
 from pathlib import Path
 from concurrent.futures import as_completed, TimeoutError
-from pdfplucker.utils import format_result, link_subtitles, get_safe_executor, logger, Data
+from pdfplucker.utils import format_results, get_safe_executor, logger, Data
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import ConversionResult
@@ -20,6 +20,7 @@ from docling.datamodel.pipeline_options import (
     PdfPipelineOptions,
     EasyOcrOptions,
 )
+# from docling.datamodel.pipeline_options import granite_picture_description -> For a future trial
 
 def update_error_log(
     filename: str,
@@ -120,16 +121,12 @@ def update_error_log(
         except Exception as e:
             print(f"Error deleting temp directory {temp_dir}: {e}")
 
-def convert_paths_to_strings(obj):
-    """Recursively convert all Path objects to strings in a nested structure"""
-    if isinstance(obj, Path):
-        return str(obj)
-    elif isinstance(obj, dict):
-        return {k: convert_paths_to_strings(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_paths_to_strings(item) for item in obj]
+def json_serializable(obj):
+    """Função auxiliar para tornar objetos personalizados serializáveis em JSON."""
+    if hasattr(obj, '__dict__'):
+        return obj.__dict__
     else:
-        return obj
+        return str(obj)
 
 def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list = ['es', 'pt'], force_ocr: bool = False) -> DocumentConverter:
     ''' Create a DocumentConverter object with the pipeline options configured''' 
@@ -141,8 +138,14 @@ def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list
     pipeline_options.generate_picture_images = True
     pipeline_options.do_picture_classification = True
     pipeline_options.do_formula_enrichment = True
-    
-    # Aggressive scaling for low memory mode
+    #pipeline_options.do_picture_description = True
+    #pipeline_options.picture_description_options = (
+    #    smolvlm_picture_description
+    #) 
+    #pipeline_options.picture_description_options.prompt = (
+    #    "Descreva a imagem em 3 frases. Seja sucinto e preciso."
+    #)
+
     pipeline_options.images_scale = 1
     
     if force_ocr:
@@ -256,27 +259,39 @@ def process_pdf(
     
         data: Data = {
             "metadata": {},
-            "sections" : [],
+            "pages" : [],
             "images": [],
             "tables": [],
-            "subtitles" : []
+            "captions" : []
         }
 
         # Use PyMuPDF (fitz) for extracting metadata - lightweight operation
         with fitz.open(source) as doc:
+            raw_metadata = doc.metadata
             # Check number of pages for large documents
             num_pages = len(doc)
             if num_pages > 100:
                 logger.warning(f"Large document detected: {filename} has {num_pages} pages")
-            data["metadata"] = doc.metadata
-            data["metadata"]["filename"] = filename
-            data["metadata"]["pages"] = num_pages
+
+            data["metadata"].update({
+                "format": raw_metadata.get('format') or None,
+                "title": raw_metadata.get('title') or None,
+                "creationDate": raw_metadata.get('creationDate') or None,
+                "modDate": raw_metadata.get("modDate") or None,
+                "filename": filename,
+                "pageAmount": len(doc) or None
+            }) 
 
         conv: ConversionResult = doc_converter.convert(str(source)) # use str instead of Path
-        format_result(conv, data, base_filename, image_folder)
-        link_subtitles(data)
 
-        # Save Markdown if asked - after clearing conversion memory
+        success = format_results(conv, data, base_filename, image_folder)
+
+        if not success:
+            logger.error(f"Error while formatting results from '{filename}'")
+            update_error_log(str(source), f"Error while formatting results from '{filename}'", final=False, temp_dir=os.path.join(output, "temp_errors"), metrics=None, output_dir=None)
+            return False
+
+        # Save Markdown if asked
         if markdown:
             try:
                 if separate_folders:
@@ -288,12 +303,10 @@ def process_pdf(
             except Exception as md_error:
                 logger.error(f"Error saving markdown: {md_error}")
                 update_error_log(str(source), f"Failed to export markdown: {md_error}", final=False, temp_dir=os.path.join(output, "temp_errors"), metrics=None, output_dir=None)
-
-        # transform Paths into strings
-        data = convert_paths_to_strings(data)
+                return False
 
         with open(result, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
+            json.dump(data, f, indent=4, ensure_ascii=False, default=json_serializable)
 
         return True
 
@@ -433,14 +446,11 @@ def _update_metrics(metrics: dict, output_dir: str, final: bool = False) -> None
     """Atualiza e salva as métricas de processamento"""
     metrics['elapsed_time'] = time.time() - metrics['initial_time']
 
-    # Convert Paths to string
-    metrics = convert_paths_to_strings(metrics)
-
     processed = metrics['processed_docs']
     if processed > 0:
         metrics['success_rate'] = ((processed - metrics['failed_docs']) / processed) * 100
     
     filename = 'final_metrics.json' if final else 'intermediate_metrics.json'
     with open(os.path.join(output_dir, filename), 'w') as f:
-        json.dump(metrics, f, indent=2)
+        json.dump(metrics, f, indent=2, ensure_ascii=False, default=json_serializable)
     logger.info(f"Metrics updated: {filename}")
