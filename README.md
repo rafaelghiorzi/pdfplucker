@@ -171,44 +171,80 @@ This will create a separate folder for each PDF, use 8 parallel processes, set a
 
 PdfPlucker generates structured outputs in the following formats:
 
-### JSON Output
+### Custom JSON Output
 
 The JSON output contains:
-- Document metadata (title, author, date, etc.)
-- Extracted text divided into sections (title, text)
-- Table data with structure preserved and subtitles, if they exist
-- References to extracted images, with subtitles, if they exist
+- Document metadata,
+- Extracted text divided into pages,
+- Pages in markdown format, with externally referenced tables and images
+- Table data with preserved structure,
+- References to extracted images with preserved structure.
 
 Example structure:
 ```json
 {
     "metadata": {
         "format": "PDF 1.7",
-        "title": "Microsoft Word - Sample Title",
-        "..."
-        "producer": "Microsoft: Print To PDF",
-        "creationDate": "D:20250401144737-03'00'",
-        "filename": "file.pdf"
+        "title": null,
+        "..." : "...",
+        "modDate": "D:20240707100910Z",
+        "filename": "sample.pdf",
+        "pageAmount": 5
     },
-    "sections": [
+    "pages": [
         {
-            "title": "Big Title!",
-            "text": "Following text after title"
+            "page_number": 1,
+            "content": " <sample_0.png>\n# Sample PDF text!\nIt comes in markdown format!"
         },
+        {
+          "other pages" : "..."
+        },
+        {
+            "page_number": 5,
+            "content": "<#/tables/0> This a referenced table and <sample_2.png> this is a referenced image"
+        }
     ],
     "images": [
-      {
-        "self_ref" : "#picture/1",
-        "ref" : "path/to/image.png",
-        "subtitle" : "possible subtitle"
-      }
+        {
+            "ref": "sample_0.png",
+            "self_ref": "#/pictures/0",
+            "caption": "",
+            "classification": [
+                "logo"
+            ],
+            "confidence": 0.999339759349823,
+            "references": [],
+            "footnotes": [],
+            "page": 1
+        },
+        {
+          "..." : "..."
+        },
+        {
+            "ref": "sample_2.png",
+            "self_ref": "#/pictures/2",
+            "caption": "",
+            "classification": [
+                "bar_chart"
+            ],
+            "confidence": 0.9979164004325867,
+            "references": [],
+            "footnotes": [],
+            "page": 5
+        }
     ],
     "tables": [
-      {
-        "self_ref" : "#table/1",
-        "subtitle" : "possible subtitle",
-        "table" : {"table in dict format"}
-      }
+        {
+            "self_ref": "#/tables/0",
+            "caption": "",
+            "references": [],
+            "footnotes": [],
+            "page": 3,
+            "table": "The table comes in markdown format!"
+        },
+        {
+          "..." : "..."
+        }
     ]
 }
 ```

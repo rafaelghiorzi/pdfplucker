@@ -1,5 +1,4 @@
-# Version 0.3.9
-
+# Version 1.1.0
 import os
 import gc
 import json
