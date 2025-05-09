@@ -22,15 +22,32 @@ class Data(TypedDict):
 
 def format_results(conv: ConversionResult, data: Data, filename: str, image_path: str) -> bool:
     ''' Uses the docling document to format a readable JSON result '''
-
-    counter = 0
+    
     try:
+        # Pré-inicializa o dicionário de páginas para evitar verificações repetidas
+        pages_dict = {}
+        for page_dict in data['pages']:
+            pages_dict[page_dict['page_number']] = page_dict
+            if 'content' not in page_dict:
+                page_dict['content'] = ""
+        
+        # Processa captions antecipadamente para uso posterior
+        caption_dict = {}
+        
+        counter = 0
         for idx, (item, _) in enumerate(conv.document.iterate_items()):
             if isinstance(item, TextItem):
                 page = item.prov[0].page_no
                 label = item.label
                 text = item.text
-                content =  None
+                
+                # Criar ou obter a página uma única vez
+                if page not in pages_dict:
+                    new_page = {'page_number': page, 'content': ""}
+                    data['pages'].append(new_page)
+                    pages_dict[page] = new_page
+                
+                # Determina o conteúdo baseado no label
                 match label:
                     case DocItemLabel.SECTION_HEADER:
                         content = f"\n# {text}\n"
@@ -42,127 +59,157 @@ def format_results(conv: ConversionResult, data: Data, filename: str, image_path
                         content = f"\n- {text}\n"
                     case DocItemLabel.CAPTION:
                         content = f" _{text}_\n"
+                        # Armazena caption para uso posterior
                         data['captions'].append({
-                            'self_ref' : item.self_ref,
-                            'cref' : item.parent.cref,
-                            'text' : text
+                            'self_ref': item.self_ref,
+                            'cref': item.parent.cref,
+                            'text': text
                         })
+                        # Também pré-processa para uso posterior
+                        caption_dict[item.parent.cref] = text
                     case DocItemLabel.FOOTNOTE:
                         content = f"\nFootnote: {text}\n"
                     case DocItemLabel.TITLE:
                         content = f"\n## {text}\n"
                     case DocItemLabel.TEXT:
                         content = f" {text}"
+                    case DocItemLabel.PARAGRAPH:
+                        content = f"\n{text}\n"
+                    case DocItemLabel.PAGE_FOOTER:
+                        content = f"\n{text}\n"
+                    case DocItemLabel.CHECKBOX_SELECTED:
+                        content = f"\n- {text}\n"
+                    case DocItemLabel.CHECKBOX_UNSELECTED:
+                        content = f"\n- {text}\n"
                     case _:
                         content = f" {text}"
-
-                page_found = False
-                for page_dict in data['pages']:
-                    if page_dict['page_number'] == page:
-                        page_found = True
-                        if 'content' not in page_dict:
-                            page_dict['content'] = ""
-                        page_dict['content'] += content
-                        break
-                        
-                if not page_found:
-                    new_page = {'page_number': page, 'content': content}
-                    data['pages'].append(new_page)
-    
+                
+                # Adiciona o conteúdo à página
+                pages_dict[page]['content'] += content
+                    
             elif isinstance(item, TableItem):
                 table = item.export_to_markdown(doc=conv.document)
                 self_ref = item.self_ref
-                captions = item.captions
-                references = item.references
-                footnotes = item.footnotes
                 page = item.prov[0].page_no
-    
-                page_found = False
-                for page_dict in data['pages']:
-                    if page_dict['page_number'] == page:
-                        page_found = True
-                        if 'content' not in page_dict:
-                            page_dict['content'] = ""
-                        page_dict['content'] += f" <{self_ref}>"
-                if not page_found:
+                
+                # Criar ou obter a página uma única vez
+                if page not in pages_dict:
                     new_page = {'page_number': page, 'content': f" <{self_ref}>"}
                     data['pages'].append(new_page)
+                    pages_dict[page] = new_page
+                else:
+                    pages_dict[page]['content'] += f" <{self_ref}>"
+                
                 data['tables'].append({
-                    'self_ref' : self_ref,
-                    'captions' : captions,
-                    'caption' : "",
-                    'references' : references,
-                    'footnotes' : footnotes,
-                    'page' : page, 
-                    'table' : table
+                    'self_ref': self_ref,
+                    'captions': item.captions,
+                    'caption': "",
+                    'references': item.references,
+                    'footnotes': item.footnotes,
+                    'page': page,
+                    'table': table
                 })
     
             elif isinstance(item, PictureItem):
                 self_ref = item.self_ref
-                captions = item.captions
-                references = item.references
-                footnotes = item.footnotes
                 page = item.prov[0].page_no
+                
+                # Extrair classificação, se disponível
                 classification = None
                 confidence = None
                 if item.annotations:
                     for annotation in item.annotations:
                         if annotation.kind == 'classification':
-                            # Find the classification with the highest confidence
                             best_class = max(
                                 annotation.predicted_classes,
                                 key=lambda cls: cls.confidence
                             )
-                            classification = best_class.class_name,
+                            classification = best_class.class_name
                             confidence = best_class.confidence
                             break
+                
+                # Salva a imagem
                 image_filename = (image_path / f"{filename}_{counter}.png")
                 placeholder = f"{filename}_{counter}.png"
                 with image_filename.open('wb') as file:
                     item.get_image(conv.document).save(file, "PNG")
-                data['images'].append({
-                    'ref': placeholder,
-                    'self_ref' : self_ref,
-                    'captions' : captions,
-                    'caption' : "",
-                    'classification' : classification,
-                    'confidence' : confidence,
-                    'references' : references,
-                    'footnotes' : footnotes,
-                    'page' : page,
-                })
-                counter += 1
-    
-                page_found = False
-                for page_dict in data['pages']:
-                    if page_dict['page_number'] == page:
-                        page_found = True
-                        if 'content' not in page_dict:
-                            page_dict['content'] = ""
-                        page_dict['content'] += f" <{placeholder}>"
-                if not page_found:
+                
+                # Criar ou obter a página uma única vez
+                if page not in pages_dict:
                     new_page = {'page_number': page, 'content': f" <{placeholder}>"}
                     data['pages'].append(new_page)
+                    pages_dict[page] = new_page
+                else:
+                    pages_dict[page]['content'] += f" <{placeholder}>"
+                
+                data['images'].append({
+                    'ref': placeholder,
+                    'self_ref': self_ref,
+                    'captions': item.captions,
+                    'caption': "",
+                    'classification': classification,
+                    'confidence': confidence,
+                    'references1': item.references,
+                    'references': [],
+                    'footnotes1': item.footnotes,
+                    'footnotes': [],
+                    'page': page,
+                })
+                counter += 1
 
-
-        caption_dict = {caption["cref"]: caption["text"] for caption in data.get("captions", [])}
-    
+        # Processa as referências de texto e aplica captions
+        text_refs = {}
+        for text in conv.document.texts:
+            if text.label == DocItemLabel.TEXT:
+                text_refs[text.self_ref] = text.text
+        
+        # Aplica captions, referências e notas de rodapé em uma única iteração
         for image in data.get("images", []):
+            # Aplica caption
             self_ref = image.get("self_ref")
             if self_ref in caption_dict:
-                caption_text = caption_dict[self_ref]
-                if caption_text not in image.get("caption", ""):
-                    image["caption"] += f"{caption_text} "
+                image["caption"] += caption_dict[self_ref]
+            
+            # Aplica referências
+            for ref in image.get("references1", []):
+                if ref in text_refs:
+                    image['references'].append(text_refs[ref])
+            
+            # Aplica notas de rodapé
+            for footnote in image.get("footnotes1", []):
+                if footnote in text_refs:
+                    image['footnotes'].append(text_refs[footnote])
+            
+            # Remove campos temporários
             image.pop('captions')
+            image.pop('references1')
+            image.pop('footnotes1')
 
+        # Mesmo processo para tabelas
         for table in data.get("tables", []):
+            # Aplica caption
             self_ref = table.get("self_ref")
             if self_ref in caption_dict:
-                caption_text = caption_dict[self_ref]
-                if caption_text not in table.get("caption", ""):
-                    table["caption"] += f"{caption_text} "
+                table["caption"] += caption_dict[self_ref]
+            
+            # Aplica referências
+            for ref in table.get("references", []):
+                if ref in text_refs:
+                    table['references'].append(text_refs[ref])
+            
+            # Aplica notas de rodapé
+            for footnote in table.get("footnotes", []):
+                if footnote in text_refs:
+                    table['footnotes'].append(text_refs[footnote])
+            
+            # Remove campos temporários
             table.pop('captions')
+            if 'references1' in table:
+                table.pop('references1')
+            if 'footnotes1' in table:
+                table.pop('footnotes1')
 
+        # Remove captions temporárias
         data.pop('captions')
         
         return True

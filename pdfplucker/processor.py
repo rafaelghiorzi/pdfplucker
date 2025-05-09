@@ -164,7 +164,7 @@ def create_converter(device : str = 'CPU', num_threads : int = 4, ocr_lang: list
 
     return converter
 
-def _worker(source, output, image_path, doc_converter, separate_folders, markdown, queue):
+def _worker(source, output, image_path, doc_converter, separate_folders, markdown, queue: multiprocessing.Queue):
     try:
         result = process_pdf(
             source,
