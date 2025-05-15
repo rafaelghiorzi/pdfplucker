@@ -172,12 +172,14 @@ def format_results(conv: ConversionResult, data: Data, filename: str, image_path
             
             # Aplica referências
             for ref in image.get("references1", []):
-                if ref in text_refs:
+                ref_key = getattr(ref, 'self_ref', str(ref))
+                if ref_key in text_refs:
                     image['references'].append(text_refs[ref])
             
             # Aplica notas de rodapé
             for footnote in image.get("footnotes1", []):
-                if footnote in text_refs:
+                footnote_key = getattr(footnote, 'self_ref', str(footnote))
+                if footnote_key in text_refs:
                     image['footnotes'].append(text_refs[footnote])
             
             # Remove campos temporários
@@ -194,12 +196,14 @@ def format_results(conv: ConversionResult, data: Data, filename: str, image_path
             
             # Aplica referências
             for ref in table.get("references", []):
-                if ref in text_refs:
+                ref_key = getattr(ref, 'self_ref', str(ref))
+                if ref_key in text_refs:
                     table['references'].append(text_refs[ref])
             
             # Aplica notas de rodapé
             for footnote in table.get("footnotes", []):
-                if footnote in text_refs:
+                footnote_key = getattr(footnote, 'self_ref', str(footnote))
+                if footnote_key in text_refs:
                     table['footnotes'].append(text_refs[footnote])
             
             # Remove campos temporários
